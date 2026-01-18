@@ -59,7 +59,7 @@ export const ApiProvider = ({ children }) => {
     
     try {
       // Use fetch for streaming instead of axios
-      const response = await fetch('/api/query/stream', {
+      const response = await fetch('/api/custom/query/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

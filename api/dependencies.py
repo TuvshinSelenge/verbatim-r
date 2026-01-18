@@ -32,8 +32,7 @@ def get_rag_instance(config: Annotated[APIConfig, Depends(get_config)]) -> Verba
             from verbatim_rag.embedding_providers import SpladeProvider
 
             llm_client = LLMClient(
-                model="gpt-4o-mini",
-                temperature=1.0,
+                model="gpt-5.1",
             )
 
             # Create providers
@@ -80,7 +79,15 @@ def get_template_manager(
 
     if _template_manager is None:
         try:
-            _template_manager = TemplateManager()
+            # LLM client for contextual templates
+            llm_client = LLMClient(
+                model="gpt-5.1"
+            )
+
+            _template_manager = TemplateManager(llm_client=llm_client)
+
+            # Enable contextual mode with per-fact placeholders
+            _template_manager.use_contextual_mode(use_per_fact=True)
 
             # Load templates if file exists
             if config.templates_path.exists():

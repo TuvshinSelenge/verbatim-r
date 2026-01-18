@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 from contextlib import asynccontextmanager
-from typing import Annotated, Optional, Any
+from typing import Annotated, Optional
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,6 +40,7 @@ from api.dependencies import (
     check_system_ready,
 )
 from api.services.rag_service import APIService
+from custom.rag_app import get_custom_service
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -50,20 +51,11 @@ logger = logging.getLogger(__name__)
 class QueryRequestModel(BaseModel):
     question: str
     template_id: Optional[str] = None
-    k: Optional[int] = None
-    hybrid_weights: Optional[dict[str, float]] = None
-    rrf_k: int = 60
-    filter: Optional[str] = None
-    search_params: Optional[dict[str, Any]] = None
 
 
 class StreamQueryRequestModel(BaseModel):
     question: str
     num_docs: int = 5
-    hybrid_weights: Optional[dict[str, float]] = None
-    rrf_k: int = 60
-    filter: Optional[str] = None
-    search_params: Optional[dict[str, Any]] = None
 
 
 class StatusResponse(BaseModel):
@@ -214,14 +206,7 @@ async def query_endpoint(
         api_service.validate_query_request(request.question)
 
         # Execute query using the RAG package directly
-        response = api_service.rag.query(
-            request.question,
-            k=request.k,
-            hybrid_weights=request.hybrid_weights,
-            rrf_k=request.rrf_k,
-            filter=request.filter,
-            search_params=request.search_params,
-        )
+        response = api_service.rag.query(request.question)
 
         return response
     except ValueError as e:
@@ -240,15 +225,7 @@ async def query_async_endpoint(
     """Async query endpoint using async RAG pipeline."""
     try:
         api_service.validate_query_request(request.question)
-        response = await api_service.query_async(
-            request.question,
-            request.template_id,
-            k=request.k,
-            hybrid_weights=request.hybrid_weights,
-            rrf_k=request.rrf_k,
-            filter=request.filter,
-            search_params=request.search_params,
-        )
+        response = await api_service.query_async(request.question, request.template_id)
         return response
     except Exception as e:
         logger.error(f"Async query failed: {e}")
@@ -298,14 +275,7 @@ async def query_async_endpoint(
         api_service.validate_query_request(request.question)
 
         # Execute async query using the RAG package directly
-        response = await api_service.rag.query_async(
-            request.question,
-            k=request.k,
-            hybrid_weights=request.hybrid_weights,
-            rrf_k=request.rrf_k,
-            filter=request.filter,
-            search_params=request.search_params,
-        )
+        response = await api_service.rag.query_async(request.question)
 
         return response
 
@@ -361,12 +331,7 @@ async def query_stream_endpoint(
             try:
                 stage_count = 0
                 async for stage in streaming_rag.stream_query(
-                    request.question,
-                    request.num_docs,
-                    filter=request.filter,
-                    hybrid_weights=request.hybrid_weights,
-                    rrf_k=request.rrf_k,
-                    search_params=request.search_params,
+                    request.question, request.num_docs
                 ):
                     stage_count += 1
                     logger.info(
@@ -413,6 +378,59 @@ async def query_stream_endpoint(
     except Exception as e:
         logger.error(f"Stream query failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/custom/query/stream")
+async def custom_query_stream_endpoint(request: StreamQueryRequestModel):
+    """
+    Stream a query response using the custom pipeline (query rewriting, reranking, span extraction).
+    """
+    import json
+
+    service = get_custom_service()
+
+    async def generate_custom_response():
+        logger.info(f"Starting custom streaming query for: {request.question}")
+        stage_count = 0
+        try:
+            async for stage in service.stream_query(
+                request.question,
+                num_docs=request.num_docs,
+                per_query_k=20,
+                bank_name=service.bank_name,
+            ):
+                stage_count += 1
+                logger.info(
+                    f"Yielding custom stage {stage_count}: {stage.get('type', 'unknown')}"
+                )
+                yield json.dumps(stage) + "\n"
+
+            if stage_count == 0:
+                logger.warning("No stages yielded from custom streaming query")
+                yield json.dumps(
+                    {
+                        "type": "error",
+                        "error": "No data returned from custom pipeline",
+                        "done": True,
+                    }
+                ) + "\n"
+        except Exception as e:
+            logger.error(f"Custom streaming error: {e}")
+            import traceback
+
+            traceback.print_exc()
+            yield json.dumps({"type": "error", "error": str(e), "done": True}) + "\n"
+
+    return FastAPIStreamingResponse(
+        generate_custom_response(),
+        media_type="application/x-ndjson",
+        headers={
+            "Content-Type": "application/x-ndjson",
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Transfer-Encoding": "chunked",
+        },
+    )
 
 
 # Serve static frontend files for production deployment (mounted last to not interfere with API routes)

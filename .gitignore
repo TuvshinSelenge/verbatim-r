@@ -216,3 +216,8 @@ Thumbs.db
 
 mockup/
 research-copilot/
+
+
+# Add to .gitignore
+custom/milvus_verbatim.db
+*.db
