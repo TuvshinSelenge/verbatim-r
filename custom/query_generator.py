@@ -42,7 +42,7 @@ Question: {question}
         data = json.loads(resp.choices[0].message.content)
         queries = [q.strip() for q in data.get("queries", []) if q and q.strip()]
         
-        # Dedupe keeping order
+        # Deduplication keeping order
         out, seen = [], set()
         for q in queries:
             if q not in seen:
