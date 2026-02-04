@@ -10,6 +10,8 @@ This service provides an alternative RAG pipeline that uses:
 
 import os
 import asyncio
+import json
+import re
 from typing import AsyncGenerator, Dict, Any, List, Optional
 from types import SimpleNamespace
 from dataclasses import dataclass
@@ -20,6 +22,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from pymilvus import connections
 from openai import OpenAI
+import openai
 
 from verbatim_rag.vector_stores import LocalMilvusStore
 from verbatim_rag.index import VerbatimIndex
@@ -52,8 +55,43 @@ BANK_SHORT = "RBI"
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2" 
 SPARSE_MODEL = "opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill"
 BGE_RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
-LLM_MODEL = "gpt-5.1"
 
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY") 
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+LLM_MODEL = "google/gemini-3-flash-preview"
+
+
+# Robust JSON parsing for Gemini/OpenRouter responses
+
+def safe_parse_json(response: str) -> dict:
+    """
+    Parse JSON from LLM response, handling markdown code blocks and extra text.
+    Gemini often wraps JSON in ```json ... ``` blocks.
+    """
+    if not response or not response.strip():
+        raise ValueError("Empty response")
+    
+    content = response.strip()
+
+    # Method 1: Extract from markdown code blocks (```json ... ``` or ``` ... ```)
+    json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
+    if json_match:
+        try:
+            return json.loads(json_match.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+    
+    # Method 2: Find the first { and last } (handles text before/after JSON)
+    brace_match = re.search(r'(\{[\s\S]*\})', content)
+    if brace_match:
+        try:
+            return json.loads(brace_match.group(1))
+        except json.JSONDecodeError:
+            pass
+    
+    # Method 3: Direct parse (already valid JSON)
+    return json.loads(content)
 
 
 # Embedding Provider
@@ -68,10 +106,9 @@ class LocalHuggingFaceProvider:
             )
         print(f"🔹 Loading Dense Embedder: {model_name} on {device}...")
         # Load on CPU first, then move to target device
-        self.model = SentenceTransformer(model_name, device="cpu", trust_remote_code=True)
-        if device != "cpu":
-            self.model = self.model.to(device)
+        self.model = SentenceTransformer(model_name) 
         self.device = device
+        self.model = self.model.to(device)
         
     def get_dimension(self):
         return self.model.get_sentence_embedding_dimension()
@@ -120,7 +157,10 @@ class RAG:
         self.bank_name = BANK_NAME
         self.bank_short = BANK_SHORT
         
-        self.openai_client = OpenAI()
+        self.openai_client = OpenAI(
+        base_url=OPENROUTER_BASE_URL,
+        api_key=OPENROUTER_API_KEY,
+        )   
         
         # Initialize components
         self._init_embedders()
@@ -178,7 +218,7 @@ class RAG:
     
     def _init_query_rewriter(self):
         """Initialize query rewriter."""
-        self.query_rewriter = QueryRewriter(self.openai_client, LLM_MODEL)
+        self.query_rewriter = QueryRewriter(openai_client=self.openai_client, model=LLM_MODEL)
         print("Query rewriter initialized")
     
     def _init_query_generator(self):
@@ -187,12 +227,70 @@ class RAG:
     
     def _init_extractor(self):
         """Initialize LLM span extractor and response builder."""
-        self.llm_client = LLMClient(LLM_MODEL)
+        self.llm_client = LLMClient(
+            model=LLM_MODEL,
+            api_base=OPENROUTER_BASE_URL,
+        )
+        self.llm_client.client = self.openai_client
+        self.llm_client.async_client = openai.AsyncOpenAI(
+            base_url=OPENROUTER_BASE_URL,
+            api_key=OPENROUTER_API_KEY,
+        )
+        
+        # Patch LLMClient for robust JSON parsing (handles Gemini's markdown-wrapped responses)
+        self._patch_llm_client_for_robust_json()
+
         self.extractor = LLMSpanExtractor(llm_client=self.llm_client)
         self.response_builder = ResponseBuilder()
         self.template_manager = TemplateManager(llm_client=self.llm_client)
         self.template_manager.use_contextual_mode(use_per_fact=True) # Added to activate contextual mode
         print("Template manager initialized")
+    
+    def _patch_llm_client_for_robust_json(self):
+        """
+        Patch the LLMClient to handle various JSON response formats from Gemini.
+        Gemini often returns JSON wrapped in markdown code blocks.
+        """
+        original_complete = self.llm_client.complete
+        original_complete_async = self.llm_client.complete_async
+        llm_client = self.llm_client
+        
+        def robust_extract_spans(question: str, documents: dict) -> dict:
+            """Extract spans with robust JSON parsing."""
+            prompt = llm_client._build_extraction_prompt(question, documents)
+            try:
+                response = original_complete(prompt, json_mode=True)
+                return safe_parse_json(response)
+            except (json.JSONDecodeError, ValueError) as e:
+                # If json_mode fails, try without it
+                try:
+                    response = original_complete(prompt, json_mode=False)
+                    return safe_parse_json(response)
+                except (json.JSONDecodeError, ValueError) as e2:
+                    print(f"Span extraction failed: {e2}")
+                    if response:
+                        print(f"Raw response preview: {response[:300]}...")
+                    return {doc_id: [] for doc_id in documents.keys()}
+        
+        async def robust_extract_spans_async(question: str, documents: dict) -> dict:
+            """Async extract spans with robust JSON parsing."""
+            prompt = llm_client._build_extraction_prompt(question, documents)
+            try:
+                response = await original_complete_async(prompt, json_mode=True)
+                return safe_parse_json(response)
+            except (json.JSONDecodeError, ValueError) as e:
+                try:
+                    response = await original_complete_async(prompt, json_mode=False)
+                    return safe_parse_json(response)
+                except (json.JSONDecodeError, ValueError) as e2:
+                    print(f"Async span extraction failed: {e2}")
+                    if response:
+                        print(f"Raw response preview: {response[:300]}...")
+                    return {doc_id: [] for doc_id in documents.keys()}
+        
+        # Patch the methods
+        self.llm_client.extract_spans = robust_extract_spans
+        self.llm_client.extract_spans_async = robust_extract_spans_async
     
     def is_ready(self) -> bool:
         """Check if service is ready."""

@@ -4,7 +4,7 @@ from openai import OpenAI
 
 BANK_NAME = "Raiffeisen Bank International AG"
 BANK_SHORT = "RBI"
-LLM_MODEL = "gpt-5.1"
+LLM_MODEL = "google/gemini-3-flash-preview"
 
 class QueryGenerator:
     """Generates multiple search queries from a user question."""
