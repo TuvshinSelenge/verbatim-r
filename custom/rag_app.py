@@ -9,12 +9,19 @@ This service provides an alternative RAG pipeline that uses:
 """
 
 import os
+import sys
 import asyncio
 import json
 import re
+from pathlib import Path
 from typing import AsyncGenerator, Dict, Any, List, Optional
 from types import SimpleNamespace
 from dataclasses import dataclass
+
+# Setup path for set-up folder imports
+CUSTOM_DIR = Path(__file__).parent              # custom/
+SETUP_DIR = CUSTOM_DIR / "set-up"               # custom/set-up/
+sys.path.insert(0, str(SETUP_DIR))
 
 from dotenv import load_dotenv
 
@@ -27,6 +34,7 @@ import openai
 from verbatim_rag.vector_stores import LocalMilvusStore
 from verbatim_rag.index import VerbatimIndex
 from verbatim_rag.embedding_providers import SpladeProvider
+from verbatim_rag.core import VerbatimRAG  # Add VerbatimRAG like eval_models.py uses
 from verbatim_core.extractors import LLMSpanExtractor
 from verbatim_core.response_builder import ResponseBuilder
 from verbatim_core.templates import TemplateManager
@@ -34,9 +42,10 @@ from verbatim_rag.llm_client import LLMClient
 from verbatim_rag.models import DocumentWithHighlights
 from sentence_transformers import SentenceTransformer
 
-from custom.query_rewriter import QueryRewriter
-from custom.query_generator import QueryGenerator
-from custom.bge_ranker import BGEReranker
+# Import from set-up folder (now on sys.path)
+from query_rewriter import QueryRewriter
+from query_generator import QueryGenerator
+from bge_ranker import BGEReranker
 
 # To run the RAG
 # use this : PYTHONPATH=. uvicorn api.app:app --reload --port 8000
@@ -92,6 +101,39 @@ def safe_parse_json(response: str) -> dict:
     
     # Method 3: Direct parse (already valid JSON)
     return json.loads(content)
+
+
+def safe_parse_template(response: str) -> str:
+    """
+    Parse template from LLM response, handling markdown code blocks.
+    Gemini often wraps templates in ```markdown ... ``` or ``` ... ``` blocks.
+    
+    This function extracts the actual template content from markdown-wrapped responses.
+    """
+    if not response or not response.strip():
+        return ""
+    
+    content = response.strip()
+    
+    # Method 1: Extract from markdown code blocks (```markdown ... ```, ```md ... ```, or ``` ... ```)
+    # This handles cases where Gemini wraps the template in code blocks
+    template_match = re.search(r'```(?:markdown|md)?\s*([\s\S]*?)\s*```', content)
+    if template_match:
+        extracted = template_match.group(1).strip()
+        # Only use the extracted content if it contains template placeholders
+        if '[FACT_' in extracted or '[DISPLAY_SPANS]' in extracted or '[RELEVANT_SENTENCES]' in extracted:
+            return extracted
+    
+    # Method 2: If content has code blocks but extraction didn't find placeholders,
+    # try to find template content outside code blocks
+    if '```' in content:
+        # Remove all code blocks and see if there's valid template content
+        cleaned = re.sub(r'```[\s\S]*?```', '', content).strip()
+        if cleaned and ('[FACT_' in cleaned or '[DISPLAY_SPANS]' in cleaned):
+            return cleaned
+    
+    # Method 3: Return the original content (already valid template)
+    return content
 
 
 # Embedding Provider
@@ -248,8 +290,8 @@ class RAG:
     
     def _patch_llm_client_for_robust_json(self):
         """
-        Patch the LLMClient to handle various JSON response formats from Gemini.
-        Gemini often returns JSON wrapped in markdown code blocks.
+        Patch the LLMClient to handle Gemini's JSON response formats.
+        Matching your benchmark's patch_llm_client_for_robust_json function.
         """
         original_complete = self.llm_client.complete
         original_complete_async = self.llm_client.complete_async
@@ -288,9 +330,11 @@ class RAG:
                         print(f"Raw response preview: {response[:300]}...")
                     return {doc_id: [] for doc_id in documents.keys()}
         
-        # Patch the methods
+        # Patch span extraction methods (matching your benchmark's patch_llm_client_for_robust_json)
+        # NOTE: Your benchmark does NOT patch template generation, so we don't either
         self.llm_client.extract_spans = robust_extract_spans
         self.llm_client.extract_spans_async = robust_extract_spans_async
+        self.llm_client.extract_relevant_spans_batch = robust_extract_spans
     
     def is_ready(self) -> bool:
         """Check if service is ready."""
@@ -424,11 +468,10 @@ class RAG:
                 "data": [doc.model_dump() for doc in reranked_documents],
             }
             
-            # Step 4: Extract spans
+            # Step 4: Extract spans using ORIGINAL question (like your benchmark does)
             print("Extracting spans...")
             relevant_spans = await asyncio.to_thread(
-                # Use the rewritten query for LLM-driven span extraction
-                self.extractor.extract_spans, span_extraction_question, wrapped_chunks
+                self.extractor.extract_spans, question, wrapped_chunks
             )
             
             # Create highlights
@@ -456,13 +499,13 @@ class RAG:
                 "data": [d.model_dump() for d in interim_documents],
             }
             
-            # Step 5: Generate answer
+            # Step 5: Generate answer using ORIGINAL question (like your benchmark does)
             print("Generating answer...")
             
             # Rank spans and split into display vs citation-only
             display_spans, citation_spans = self._rank_and_split_spans(relevant_spans)
             
-            # Generate answer using template manager
+            # Generate answer using template manager with ORIGINAL question
             try:
                 answer = await self.template_manager.process_async(
                     question, display_spans, citation_spans

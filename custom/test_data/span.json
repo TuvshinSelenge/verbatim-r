@@ -1,0 +1,112 @@
+[
+    {
+      "query": "Please advise the name of the contracting party providing custody and / or client money services in your jurisdiction and responding to this questionnaire.",
+      "top_spans": [
+        "| Name of reporting entity | Raiffeisen Bank International AG |",
+        "| ESEF Information | Raiffeisen Bank International AG |",
+        "RBI AG is the central institution of the Raiffeisen Banking Group Austria (RBG)."
+      ]
+    },
+    {
+      "query": "Please advise the full legal address and the country of incorporation of the contracting party.",
+      "top_spans": [
+        "| Address of entity's registered office | Am Stadtpark 9, 1030 Vienna |"
+      ]
+    },
+    {
+      "query": "Are you a branch of an entity incorporated in another country?",
+      "top_spans": [
+        "| Domicile of entity | Austria |",
+        "| Country of incorporation | Austria |"
+      ]
+    },
+    {
+      "query": "Have you been subject to any fines, enforcement actions or other admonishments by authorities during the last 12 months?",
+      "top_spans": [
+        "In March 2018, an administrative fine of € 2.7 million (which was calculated by reference to the annual consolidated turnover of RBI and constitutes 0.06 per cent of the last available annual consolidated turnover) was imposed on RBI by FMA in the course of administrative proceedings based on alleged non-compliance with formal documentation requirements relating to the know-your-customer principle (Initial FMA Decision).",
+        "In the retrial on 25 April 2024, the BVwG again confirmed the Initial FMA Decision in general but reduced the administrative fine down to € 2 million (from the amount of € 2.7 million imposed by the Initial FMA Decision) and allowed another (third) appeal before the VwGH (Third Appellate Decision)."
+      ]
+    },
+    {
+      "query": "Please confirm that you are subject to effective prudential regulation, including minimum capital requirements.",
+      "top_spans": [
+        "Major banks based in the European Union must adhere, for example, to the Capital Requirements Regulation (CRR), the Capital Requirements Directive (CRD), the Markets in Financial Instruments Directive (MiFID), the Anti-Money Laundering Directive (AMLD) or the Payment Services Directive.",
+        "In accordance with the Basel III framework, specific legal regulations are to be considered.",
+        "These factors are crucial for the calculation of the regulatory minimum total capital requirements."
+      ]
+    },
+    {
+      "query": "Have regulators required your organisation to undertake any stress testing?",
+      "top_spans": [
+        "Stress tests are conducted for RBI AG and the subsidiary banks on a daily basis and on Group level.",
+        "This is considered mild, in comparison to regular stress test exercises, such as the EBA stress test where a comparably larger depletion is observed, and confirms the relatively low effect from the isolated climate effect on the risk parameters.",
+        "The most recent internally generated stress testing scenarios for liquidity and capital requirements have shown that RBI has adequate resources to withstand reasonably possible downside scenarios."
+      ]
+    },
+    {
+      "query": "Have there been any changes to your group's ownership structure in the last 12 months?",
+      "top_spans": [
+        "The following disclosures satisfy the provisions of § 243a (1) of the Austrian Commercial Code (UGB): (1) As at 31 December 2024, the company's share capital amounted to € 1,003,265,844.05 and was divided into 328,939,621 voting common bearer shares. As at 31 December 2024, 525,274 (31 December 2023: 573,938) of those were own shares, and consequently 328,414,347 shares were outstanding at the reporting date. Please see note (29) Equity and non-controlling interests for further disclosures. (2) The Articles of Association contain no restrictions concerning voting rights or the transfer of shares. The regional Raiffeisen banks and direct and indirect subsidiaries of the regional Raiffeisen banks are parties to a syndicate contract (syndicate agreement) regarding RBI AG. The terms of this syndicate agreement include not only a block voting agreement and preemption rights, but also a prohibition on sales of the RBI shares held by the regional Raiffeisen banks (with few exceptions), if the sale would reduce the regional Raiffeisen banks' aggregate shareholding in RBI AG (direct and/or indirect) to less than 40 per cent of the share capital plus one share. (3) Raiffeisenlandesbank Niederösterreich-Wien AG holds directly and indirectly total around 25.00 per cent of the share capital of the company. By virtue of the syndicate agreement regarding RBI AG, the regional Raiffeisen banks and their direct and indirect subsidiaries as parties acting in concert as defined in § 1 (6) of the Austrian Takeover Act (ÜbG). The regional Raiffeisen banks hold a total of around 61.17 per cent of the voting rights. The remaining shares of RBI AG are held in free float, with no other direct or indirect shareholdings amounting to 10 per cent or more known to the Management Board.",
+        "Raiffeisenlandesbank Niederösterreich-Wien AG holds directly and indirectly total around 25.00 per cent of the share capital of the company. By virtue of the syndicate agreement regarding RBI AG, the regional Raiffeisen banks and their direct and indirect subsidiaries as parties acting in concert as defined in § 1 (6) of the Austrian Takeover Act (ÜbG). The regional Raiffeisen banks hold a total of around 61.17 per cent of the voting rights. The remaining shares of RBI AG are held in free float, with no other direct or indirect shareholdings amounting to 10 per cent or more known to the Management Board.",
+        "RBI has no majority shareholder. The eight regional Raiffeisen banks are core shareholders that collectively hold approximately 61.2 per cent of the shares, with the remaining shares in free float."
+      ]
+    },
+    {
+      "query": "What is your relationship to your group?",
+      "top_spans": [
+        "The RBG is organized into three tiers: the independent, local Raiffeisen banks (1st tier), the eight independent regional Raiffeisen banks (2nd tier) and RBI AG (3rd tier).",
+        "In turn, the regional Raiffeisen banks are connected to RBI AG through its role as the central institution of the RBG.",
+        "Within RBG, RBI AG serves as the central institution (as defined by § 27a of the Austrian Banking Act (BWG)) of the regional Raiffeisen banks and other affiliated credit institutions.",
+        "RBI AG is the central institution of the Raiffeisen Banking Group Austria (RBG).",
+        "The Raiffeisen-IPS is controlled by a joint risk council, comprising representatives of RBI AG, the regional Raiffeisen banks and the Raiffeisen banks."
+      ]
+    },
+    {
+      "query": "Does your organisation have measures in place to identify and prevent conflicts of interest?",
+      "top_spans": [
+        "For a number of years, RBI has had internal policies that govern business transactions in detail in order to avoid conflicts of interest.",
+        "Management Board and Supervisory Board decisions must be made fairly, honestly and impartially. Both the Management Board and the Supervisory Board of RBI AG are required to disclose any potential conflicts of interest. Compliance monitors and supports this process.",
+        "Members of the Management Board must therefore disclose to the Supervisory Board any significant personal interests in transactions involving the company and Group companies, as well as any other conflicts of interest.",
+        "RBI strives to identify and avoid potential conflicts of interest in its business activities and has stringent internal guidelines in this respect. Staff members must ensure that their own interests do not conflict with their obligations towards RBI or with RBI's obligations towards its customers."
+      ]
+    },
+    {
+      "query": "Please state the credit ratings of the contracting party for long-term Credit Rating S&P?",
+      "top_spans": [
+        "Long-term rating A-",
+        "Standard & Poor's A-",
+        "S&P long-term rating A-"
+      ]
+    },
+    {
+      "query": "Please state the credit ratings of the contracting party for long-term Credit Rating Moody's?",
+      "top_spans": [
+        "Long-term rating A1",
+        "Moody's A1",
+        "Moody's Investors Service A1"
+      ]
+    },
+    {
+      "query": "Please state the credit ratings of the contracting party for long-term Credit Rating Fitch?",
+      "top_spans": []
+    },
+    {
+      "query": "Please confirm if your organisation is considered a systematically important financial institution?",
+      "top_spans": [
+        "RBI is subject to the own funds requirements pursuant to Article 92 CRR and the combined capital buffer requirement pursuant to the Austrian Banking Act (\"BWG\"), which comprises a capital conservation buffer (Section 22 BWG), a systemic risk buffer (Section 23e BWG), a capital buffer for systemically important institutions (Section 23d BWG) and a countercyclical capital buffer (Section 23a BWG).",
+        "The Financial Market Stability Board (\"FMSG\"), which is responsible for this in Austria, has recommended that the Austrian Financial Market Authority (\"FMA\") impose a systemic risk buffer (\"SyRP\") and a capital buffer for systemically important banks (\"O-SII buffer\") for RBI."
+      ]
+    },
+    {
+      "query": "What is the total amount of revenue generated by your organisation in 2026?",
+      "top_spans": []
+    },
+    {
+      "query": "What is the name of the CTO?",
+      "top_spans": []
+    },
+    {
+      "query": "What is the long-term Credit Rating from DBRS Morningstar for the contracting party?",
+      "top_spans": []
+    }
+  ]

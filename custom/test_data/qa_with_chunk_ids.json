@@ -1,0 +1,82 @@
+[
+  {
+    "query": "Please advise the name of the contracting party providing custody and / or client money services in your jurisdiction and responding to this questionnaire. If applicable, please also advise the name of the local delegate if different from the contracting entity.",
+    "expected_snippet": "Raiffeisen Bank International AG (RBI AG) is registered in the commercial register of the Commercial Court of Vienna under FN 122119m. Its address is Am Stadtpark 9, 1030 Vienna.",
+    "expected_chunk_index": [1497, 2057]
+  },
+  {
+    "query": "Please advise the full legal address and the country of incorporation of the contracting party providing custody and / or client money services in your jurisdiction and responding to this questionnaire. If applicable, please also provide this information for the local delegate if different from the contracting entity.",
+    "expected_snippet": "Raiffeisen Bank International AG (RBI AG) is registered in the commercial register of the Commercial Court of Vienna under FN 122119m. Its address is Am Stadtpark 9, 1030 Vienna.",
+    "expected_chunk_index": [1497, 2240]
+  },
+  {
+    "query": "Are you a branch of an entity incorporated in another country?",
+    "expected_snippet": "RBI regards Austria, where it is a leading corporate and investment bank, as well as Central and Eastern Europe (CEE) as its home market. Subsidiary banks cover 11 markets in the region. In addition, the Group includes numerous other financial service providers active in areas such as leasing, asset management, factoring and M&A. In total, around 43,000 RBI employees serve 17.9 million customers in around 1,400 business outlets, the vast majority of which are in CEE.",
+    "expected_chunk_index": [1497, 188, 1516, 2160]
+  },
+  {
+    "query": "Have you been subject to any fines, enforcement actions or other admonishments by authorities during the last 12 months?",
+    "expected_snippet": "In June 2024, FMA terminated the administrative proceeding in relation to one bank without a fine, but imposed a fine of \u20ac 2.07 million against RBI in relation to the other two banks. In July 2024 RBI filed an appeal to the Federal Administrative court (Bundesverwaltungsgericht - BVwG) and, thus the fine is not yet final or legally binding. ",
+    "expected_chunk_index": [2029, 83, 142]
+  },
+  {
+    "query": "Please confirm that you are subject to effective prudential regulation, including minimum capital requirements.",
+    "expected_snippet": "The disclosures required under Article 434 of EU Regulation No 575/2013 on prudential requirements for credit institutions (Capital Requirements Regulation, CRR) are published on the internet on RBI's website at www.rbinternational.com \u2192 Investors \u2192 Results & Reports.",
+    "expected_chunk_index": [59, 1521, 2137]
+  },
+  {
+    "query": "Have regulators required your organisation to undertake any stress testing to ensure your risk management and capital planning decisions can sufficiently withstand adverse market events?",
+    "expected_snippet": "At RBI level, the impact on the risk parameters from the climate risk exercises has been assessed as non-material, supporting the overall resilience of RBI. This is considered mild, in comparison to regular stress test exercises, such as the EBA stress test where a comparably larger depletion is observed, and confirms the relatively low effect from the isolated climate effect on the risk parameters.",
+    "expected_chunk_index": [1976, 1112, 1898, 288]
+  },
+  {
+    "query": "Have there been any changes to your group's ownership structure in the last 12 months.",
+    "expected_snippet": "The regional Raiffeisen banks hold 61.17 per cent of RBI\u2019s shares. The remaining shares are held in free float.",
+    "expected_chunk_index": [188, 1496, 2057] 
+  },
+  {
+    "query": "What is your relationship to your group?",
+    "expected_snippet": "The main companies exercising a significant influence are Raiffeisenlandesbank Nieder\u00f6sterreich-Wien AG, Vienna, as the largest single shareholder, its parent company, Raiffeisen-Holding Nieder\u00f6sterreich-Wien registrierte Genossenschaft mit beschr\u00e4nkter Haftung, Vienna, and their fully consolidated subsidiaries. The amounts shown under affiliated companies relate to affiliated companies that are not consolidated due to immateriality.",
+    "expected_chunk_index": [2160, 188, 2035, 63, 2057]
+  },
+  {
+    "query": "Does your organisation have measures in place to identify and prevent conflicts of interest between custody and other businesses (e.g. prime brokerage, execution, asset management services)?",
+    "expected_snippet": "For a number of years, RBI has had internal policies that govern business transactions in detail in order to avoid conflicts of interest. The rules enacted in Austria in mid-2019 on transactions with related companies and parties (as part of the transposition of the EU Shareholder Rights Directive into Austrian law) have been reflected in a separately issued internal directive.",
+    "expected_chunk_index": [125, 124, 2057]
+  },
+  {
+    "query": "Please state the credit ratings of the contracting party for long-term Credit Rating S&P?",
+    "expected_snippet": "| Long-term rating | A1 | A- |",
+    "expected_chunk_index": 54
+  },
+  {
+    "query": "Please state the credit ratings of the contracting party for long-term Credit Rating Moody's?",
+    "expected_snippet": "Long-term rating A1.",
+    "expected_chunk_index": 54
+  },
+  {
+    "query": "Please state the credit ratings of the contracting party for long-term Credit Rating Fitch?",
+    "expected_snippet": "",
+    "expected_chunk_index": 1300
+  },
+  {
+    "query": "Please confirm if your organisation is considered a systematically important financial institution as defined by the Financial Stability Board / Basel Committee on Banking Supervision or as defined in the jurisdiction where it is registered.",
+    "expected_snippet": "The Financial Market Stability Board (FMSG), which is responsible for this in Austria, has recommended that the Austrian Financial Market Authority (FMA) impose a systemic risk buffer (SyRP) and a capital buffer for systemically important banks (O-SII buffer) for RBI.",
+    "expected_chunk_index": [2137, 1496, 2160, 2035]
+  },
+  {
+    "query": "What is the total amount of revenue generated by your organisation in 2026?",
+    "expected_snippet": "",
+    "expected_chunk_index": 1300
+  },
+  {
+    "query": "What is the name of the CTO?",
+    "expected_snippet": "",
+    "expected_chunk_index": 1300
+  },
+  {
+    "query": "What is the long-term Credit Rating from DBRS Morningstar for the contracting party?",
+    "expected_snippet": "",
+    "expected_chunk_index": 1300
+  }
+]
