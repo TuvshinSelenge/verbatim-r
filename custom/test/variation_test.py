@@ -65,8 +65,8 @@ def collect_hits_raw(query_text: str, rag_index, reranker: BGEReranker) -> list[
     # Direct search with raw query
     hits = rag_index.query(query_text, k=SEARCH_K)
     
-    # Rerank results
-    _, reranked = reranker.rerank(query_text, hits, top_k=TOP_K)
+    # Rerank results - BGEReranker returns (chunks, ranking)
+    reranked, _ = reranker.rerank(query_text, hits, top_k=TOP_K)
     
     # Extract predictions
     preds = []
@@ -95,8 +95,8 @@ def collect_hits_rewriting(
     # Search with rewritten query
     hits = rag_index.query(rewritten, k=SEARCH_K)
     
-    # Rerank results (against rewritten query)
-    _, reranked = reranker.rerank(rewritten, hits, top_k=TOP_K)
+    # Rerank results (against rewritten query) - BGEReranker returns (chunks, ranking)
+    reranked, _ = reranker.rerank(rewritten, hits, top_k=TOP_K)
     
     # Extract predictions
     preds = []
@@ -137,8 +137,8 @@ def collect_hits_multiquery(
             seen.add(key)
             merged.append(h)
     
-    # Rerank results (against original query)
-    _, reranked = reranker.rerank(query_text, merged, top_k=TOP_K)
+    # Rerank results (against original query) - BGEReranker returns (chunks, ranking)
+    reranked, _ = reranker.rerank(query_text, merged, top_k=TOP_K)
     
     # Extract predictions
     preds = []
@@ -183,8 +183,8 @@ def collect_hits_full_pipeline(
             seen.add(key)
             merged.append(h)
     
-    # Rerank results (against rewritten query)
-    _, reranked = reranker.rerank(rewritten, merged, top_k=TOP_K)
+    # Rerank results (against rewritten query) - BGEReranker returns (chunks, ranking)
+    reranked, _ = reranker.rerank(rewritten, merged, top_k=TOP_K)
     
     # Extract predictions
     preds = []
@@ -305,6 +305,14 @@ def main():
     print("Comparing: Raw, Rewriting, Multi-Query, and Full Pipeline")
     print("="*70)
     
+    # Set OPENAI_API_KEY for modules that use it internally
+    if OPENROUTER_API_KEY:
+        os.environ["OPENAI_API_KEY"] = OPENROUTER_API_KEY
+        os.environ["OPENAI_BASE_URL"] = OPENROUTER_BASE_URL
+    else:
+        print("ERROR: OPENROUTER_API_KEY is not set.")
+        sys.exit(1)
+    
     # Load gold data - use test_data folder
     print("\nLoading evaluation data...")
     data_path = PROJECT_ROOT / "test_data" / "qa_with_chunk_ids.json"
@@ -331,7 +339,8 @@ def main():
     print("\nInitializing OpenRouter client...")
     openai_client = OpenAI(
         base_url=OPENROUTER_BASE_URL,
-        api_key=OPENROUTER_API_KEY
+        api_key=OPENROUTER_API_KEY,
+        timeout=120.0  # 2 minute timeout to prevent hanging
     )
     
     # Initialize query rewriter and generator
