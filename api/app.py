@@ -397,7 +397,6 @@ async def custom_query_stream_endpoint(request: StreamQueryRequestModel):
                 request.question,
                 num_docs=request.num_docs,
                 per_query_k=20,
-                bank_name=service.bank_name,
             ):
                 stage_count += 1
                 logger.info(

@@ -29,6 +29,7 @@ sys.path.insert(0, str(SETUP_DIR))
 # Import from set-up modules (now accessible via sys.path)
 from connect_index import connect_to_index
 from query_rewriter import QueryRewriter
+from query_generator import QueryGenerator
 from bge_ranker import BGEReranker
 from openai import OpenAI
 
@@ -54,50 +55,8 @@ def get_text_and_meta(chunk):
     return getattr(chunk, "text", ""), getattr(chunk, "metadata", {}) or {}
 
 
-def generate_search_queries(
-    question: str,
-    client: OpenAI,
-    bank_name: str = "Raiffeisen Bank International AG",
-    bank_short: str = "RBI",
-    model: str = "gpt-5.1"
-) -> list[str]:
-    """Generate multiple search queries for better retrieval."""
-    prompt = f"""
-You generate search queries to retrieve relevant chunks from a bank annual report for: {bank_name} ({bank_short}).
-
-Return JSON only with this schema:
-{{"queries": ["q1","q2","q3"]}}
-
-<Rules>
-- Make 3 queries max
-- Do NOT start queries with: Confirm / Please / Advise
-- Use short keyword-ish phrases that would appear in annual reports
-- Include 1 exact-name query with the bank name or short name when helpful
-- Include variants with synonyms / acronyms (e.g. O-SII, G-SIB, systemic risk buffer, credit rating Moody's, etc.)
-</Rules>
-
-Question: {question}
-"""
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
-        response_format={"type": "json_object"},
-    )
-    data = json.loads(resp.choices[0].message.content)
-    queries = [q.strip() for q in data.get("queries", []) if q and q.strip()]
-    
-    # Dedupe while preserving order
-    out, seen = [], set()
-    for q in queries:
-        if q not in seen:
-            seen.add(q)
-            out.append(q)
-    return out
-
-
 # =============================================================================
-# STRATEGY 1: Raw Query + Reranker (No LLM)
+# STRATEGY 1: Raw Query + Reranker 
 # =============================================================================
 def collect_hits_raw(query_text: str, rag_index, reranker: BGEReranker) -> list[tuple]:
     """
@@ -155,15 +114,14 @@ def collect_hits_multiquery(
     query_text: str,
     rag_index,
     reranker: BGEReranker,
-    openai_client: OpenAI,
-    model_name: str
+    query_generator: QueryGenerator,
 ) -> list[tuple]:
     """
     Strategy 3: Generate query variations, search all, merge, then rerank.
     Uses the raw query (no rewriting) for variations.
     """
     # Generate search query variations from raw query
-    subqs = generate_search_queries(query_text, openai_client, model=model_name)
+    subqs = query_generator.generate_queries(query_text)
     
     # Merge results from all sub-queries
     merged, seen = [], set()
@@ -199,8 +157,7 @@ def collect_hits_full_pipeline(
     query_rewriter: QueryRewriter,
     rag_index,
     reranker: BGEReranker,
-    openai_client: OpenAI,
-    model_name: str
+    query_generator: QueryGenerator,
 ) -> list[tuple]:
     """
     Strategy 4: Full pipeline - rewrite, then generate variations, merge, rerank.
@@ -210,7 +167,7 @@ def collect_hits_full_pipeline(
     rewritten = query_rewriter.rewrite(query_text)
     
     # Generate multiple search queries from rewritten query
-    subqs = generate_search_queries(rewritten, openai_client, model=model_name)
+    subqs = query_generator.generate_queries(rewritten)
     
     # Merge results from all sub-queries
     merged, seen = [], set()
@@ -247,8 +204,7 @@ def evaluate_strategy(
     rag_index,
     reranker: BGEReranker,
     query_rewriter: QueryRewriter = None,
-    openai_client: OpenAI = None,
-    model_name: str = "gpt-5.1"
+    query_generator: QueryGenerator = None,
 ) -> dict:
     """
     Evaluate a retrieval strategy and return Hit Rate and MRR.
@@ -288,9 +244,9 @@ def evaluate_strategy(
             elif strategy_name == "Rewriting + Reranker":
                 preds = collect_hits_rewriting(query, query_rewriter, rag_index, reranker)
             elif strategy_name == "Multi-Query + Reranker":
-                preds = collect_hits_multiquery(query, rag_index, reranker, openai_client, model_name)
+                preds = collect_hits_multiquery(query, rag_index, reranker, query_generator)
             elif strategy_name == "Full Pipeline":
-                preds = collect_hits_full_pipeline(query, query_rewriter, rag_index, reranker, openai_client, model_name)
+                preds = collect_hits_full_pipeline(query, query_rewriter, rag_index, reranker, query_generator)
             else:
                 raise ValueError(f"Unknown strategy: {strategy_name}")
                 
@@ -378,8 +334,9 @@ def main():
         api_key=OPENROUTER_API_KEY
     )
     
-    # Initialize query rewriter
+    # Initialize query rewriter and generator
     query_rewriter = QueryRewriter(openai_client=openai_client, model=MODEL_NAME)
+    query_generator = QueryGenerator(client=openai_client, model=MODEL_NAME)
     
     # Store all results
     all_results = []
@@ -415,8 +372,7 @@ def main():
         gold_data,
         rag_index,
         reranker,
-        openai_client=openai_client,
-        model_name=MODEL_NAME
+        query_generator=query_generator
     )
     all_results.append(results)
     
@@ -429,8 +385,7 @@ def main():
         rag_index,
         reranker,
         query_rewriter=query_rewriter,
-        openai_client=openai_client,
-        model_name=MODEL_NAME
+        query_generator=query_generator
     )
     all_results.append(results)
     

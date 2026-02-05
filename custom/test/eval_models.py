@@ -14,7 +14,7 @@ import sys
 import re
 from pathlib import Path
 from statistics import mean
-from typing import List, Dict, Any
+from typing import List, Dict
 
 import openai
 from openai import OpenAI
@@ -33,6 +33,7 @@ sys.path.insert(0, str(SETUP_DIR))
 from connect_index import connect_to_index
 from bge_ranker import BGEReranker
 from query_rewriter import QueryRewriter
+from query_generator import QueryGenerator
 
 # Import from verbatim packages
 from verbatim_rag.core import VerbatimRAG
@@ -83,42 +84,6 @@ def safe_parse_json(response: str) -> dict:
     
     # Method 3: Direct parse
     return json.loads(content)
-
-
-def safe_parse_queries(raw: str, fallback_query: str) -> list[str]:
-    """Parse {"queries": [...]} from raw model output."""
-    if not raw or not raw.strip():
-        return [fallback_query]
-
-    content = raw.strip()
-
-    # 1) Markdown code block
-    m = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
-    if m:
-        try:
-            data = json.loads(m.group(1).strip())
-            qs = data.get("queries", [])
-            return [q.strip() for q in qs if q and q.strip()] or [fallback_query]
-        except Exception:
-            pass
-
-    # 2) First JSON object in text
-    m = re.search(r'(\{[\s\S]*\})', content)
-    if m:
-        try:
-            data = json.loads(m.group(1))
-            qs = data.get("queries", [])
-            return [q.strip() for q in qs if q and q.strip()] or [fallback_query]
-        except Exception:
-            pass
-
-    # 3) Try whole string
-    try:
-        data = json.loads(content)
-        qs = data.get("queries", [])
-        return [q.strip() for q in qs if q and q.strip()] or [fallback_query]
-    except Exception:
-        return [fallback_query]
 
 
 # =============================================================================
@@ -182,54 +147,6 @@ def get_text_and_meta(chunk):
     return getattr(chunk, "text", ""), getattr(chunk, "metadata", {}) or {}
 
 
-def generate_search_queries(
-    question: str,
-    client: OpenAI,
-    bank_name: str = "Raiffeisen Bank International AG",
-    bank_short: str = "RBI",
-    model: str = "gpt-5.1"
-) -> list[str]:
-    """Generate multiple search queries for better retrieval."""
-    prompt = f"""
-You generate search queries to retrieve relevant chunks from a bank annual report for: {bank_name} ({bank_short}).
-
-Return JSON only with this schema:
-{{"queries": ["q1","q2","q3"]}}
-
-<Rules>
-- Make 3 queries max
-- Do NOT start queries with: Confirm / Please / Advise
-- Use short keyword-ish phrases that would appear in annual reports
-- Include 1 exact-name query with the bank name or short name when helpful
-- Include variants with synonyms / acronyms
-</Rules>
-
-Question: {question}
-"""
-    try:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-            response_format={"type": "json_object"},
-        )
-        raw = resp.choices[0].message.content
-    except Exception as e:
-        print(f"  Query generation error: {e}")
-        raw = ""
-
-    queries = safe_parse_queries(raw, fallback_query=question)
-
-    # Deduplicate
-    out, seen = [], set()
-    for q in queries:
-        if q not in seen:
-            seen.add(q)
-            out.append(q)
-
-    return out
-
-
 def patch_llm_client_for_robust_json(llm_client: LLMClient):
     """Patch the LLMClient to handle various JSON response formats."""
     original_complete = llm_client.complete
@@ -262,8 +179,8 @@ def calculate_retrieval_metrics(
     gold_data: List[Dict],
     rag_index,
     reranker: BGEReranker,
-    client: OpenAI,
-    model_name: str
+    query_rewriter: QueryRewriter,
+    query_generator: QueryGenerator,
 ) -> Dict[str, float]:
     """
     Calculate Hit Rate and MRR for retrieval.
@@ -286,8 +203,9 @@ def calculate_retrieval_metrics(
         print(f"  [{i}/{len(gold_data)}] {query[:50]}...")
         
         try:
-            # Generate search queries
-            subqs = generate_search_queries(query, client, model=model_name)
+            # Rewrite query then generate multiple search queries
+            rewritten = query_rewriter.rewrite(query)
+            subqs = query_generator.generate_queries(rewritten)
             
             # Merge results
             merged, seen = [], set()
@@ -375,11 +293,7 @@ def compute_f1(prediction: str, ground_truth: str) -> Dict[str, float]:
 
 def calculate_extraction_metrics(
     span_data: List[Dict],
-    rag_index,
-    reranker: BGEReranker,
-    client: OpenAI,
     rag: VerbatimRAG,
-    model_name: str
 ) -> Dict[str, float]:
     """
     Calculate extraction metrics (EM, Precision, Recall, F1).
@@ -476,12 +390,16 @@ def main():
             base_url=OPENROUTER_BASE_URL,
             api_key=OPENROUTER_API_KEY
         )
+        
+        # Initialize query rewriter and generator
+        query_rewriter = QueryRewriter(openai_client=client, model=model)
+        query_generator = QueryGenerator(client=client, model=model)
 
         # --- TEST 1: RETRIEVAL (Hit Rate / MRR) ---
         print(f"\n>>> Running Retrieval Test ({model})...")
         try:
             chunk_metrics = calculate_retrieval_metrics(
-                chunk_data, rag_index, reranker, client, model_name=model
+                chunk_data, rag_index, reranker, query_rewriter, query_generator
             )
         except Exception as e:
             print(f"Retrieval Test Failed: {e}")
@@ -510,9 +428,7 @@ def main():
             rag = VerbatimRAG(rag_index, llm_client=llm_client)
             rag.template_manager.use_contextual_mode(use_per_fact=True)
             
-            span_metrics = calculate_extraction_metrics(
-                span_data, rag_index, reranker, client, rag, model_name=model
-            )
+            span_metrics = calculate_extraction_metrics(span_data, rag)
         except Exception as e:
             print(f"Extraction Test Failed: {e}")
             import traceback

@@ -57,6 +57,15 @@ DB_PATH = os.getenv("CUSTOM_DB_PATH", "./custom/milvus_verbatim.db")
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2" 
 SPARSE_MODEL = "opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill"
 
+
+def get_device() -> str:
+    """Get optimal compute device (mps > cuda > cpu)."""
+    if torch.backends.mps.is_available():
+        return "mps"
+    if torch.cuda.is_available():
+        return "cuda"
+    return "cpu"
+
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY") 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
@@ -100,12 +109,8 @@ class LocalHuggingFaceProvider:
     """Dense embedding provider using local HuggingFace models."""
     
     def __init__(self, model_name: str = EMBEDDING_MODEL, device: str = None):
-        if device is None:
-            device = "mps" if torch.backends.mps.is_available() else (
-                "cuda" if torch.cuda.is_available() else "cpu"
-            )
+        device = device or get_device()
         print(f"🔹 Loading Dense Embedder: {model_name} on {device}...")
-        # Load on CPU first, then move to target device
         self.model = SentenceTransformer(model_name) 
         self.device = device
         self.model = self.model.to(device)
@@ -172,10 +177,7 @@ class RAG:
     
     def _init_embedders(self):
         """Initialize embedding providers."""
-        device = (
-            "mps" if torch.backends.mps.is_available()
-            else ("cuda" if torch.cuda.is_available() else "cpu")
-        )
+        device = get_device()
         self.dense_embedder = LocalHuggingFaceProvider(EMBEDDING_MODEL, device)
         self.sparse_provider = SpladeProvider(model_name=SPARSE_MODEL, device="cpu")
         print("Embedders initialized")
@@ -196,14 +198,14 @@ class RAG:
         except Exception:
             pass
         
-        self.store = LocalMilvusStore(
+        store = LocalMilvusStore(
             DB_PATH,
             enable_sparse=True,
             enable_dense=True,
         )
         
         self.index = VerbatimIndex(
-            vector_store=self.store,
+            vector_store=store,
             dense_provider=self.dense_embedder,
             sparse_provider=self.sparse_provider,
         )
@@ -331,8 +333,11 @@ class RAG:
             merged = []
             seen = set()
             
-            for q in queries:
-                hits = await asyncio.to_thread(self.index.query, q, per_query_k)
+            async def search_query(q):
+                return await asyncio.to_thread(self.index.query, q, per_query_k)
+
+            all_hits = await asyncio.gather(*[search_query(q) for q in queries])
+            for hits in all_hits:
                 for h in hits:
                     text = self._get_text(h)
                     meta = self._get_meta(h)
@@ -354,19 +359,10 @@ class RAG:
             print(f"Found {len(merged)} unique chunks")
             
             # Send documents without highlights first
-            documents_without_highlights = []
-            for doc in merged[:num_docs]:  # Send only requested number
-                meta = self._get_meta(doc)
-                title, source = self._extract_title_and_source(meta)
-                documents_without_highlights.append(
-                    DocumentWithHighlights(
-                        content=self._get_text(doc),
-                        highlights=[],
-                        title=title,
-                        source=source,
-                        metadata=meta,
-                    )
-                )
+            documents_without_highlights = [
+                self._build_document(self._get_text(doc), self._get_meta(doc))
+                for doc in merged[:num_docs]
+            ]
             
             yield {
                 "type": "documents",
@@ -375,7 +371,7 @@ class RAG:
             
             # Step 3: Rerank with BGE
             print("Reranking...")
-            top_chunks, ranking = await asyncio.to_thread(
+            top_chunks, _ = await asyncio.to_thread(
                 # Notebook uses the rewritten question for reranking
                 self.reranker.rerank, rewritten_question, merged, num_docs
             )
@@ -396,18 +392,10 @@ class RAG:
                 )
             
             # Update documents with reranked order
-            reranked_documents = []
-            for chunk in wrapped_chunks:
-                title, source = self._extract_title_and_source(chunk.metadata)
-                reranked_documents.append(
-                    DocumentWithHighlights(
-                        content=chunk.text,
-                        highlights=[],
-                        title=title,
-                        source=source,
-                        metadata=chunk.metadata,
-                    )
-                )
+            reranked_documents = [
+                self._build_document(chunk.text, chunk.metadata)
+                for chunk in wrapped_chunks
+            ]
             
             yield {
                 "type": "documents",
@@ -423,21 +411,13 @@ class RAG:
             # Create highlights
             interim_documents = []
             for chunk in wrapped_chunks:
-                doc_content = chunk.text
-                doc_spans = relevant_spans.get(doc_content, [])
-                if doc_spans:
-                    highlights = self.response_builder._create_highlights(doc_content, doc_spans)
-                else:
-                    highlights = []
-                title, source = self._extract_title_and_source(chunk.metadata)
+                doc_spans = relevant_spans.get(chunk.text, [])
+                highlights = (
+                    self.response_builder._create_highlights(chunk.text, doc_spans)
+                    if doc_spans else []
+                )
                 interim_documents.append(
-                    DocumentWithHighlights(
-                        content=doc_content,
-                        highlights=highlights,
-                        title=title,
-                        source=source,
-                        metadata=chunk.metadata,
-                    )
+                    self._build_document(chunk.text, chunk.metadata, highlights)
                 )
             
             yield {
@@ -520,6 +500,22 @@ class RAG:
     @staticmethod
     def _normalize_text(t: str) -> str:
         return (t or "").replace("\ufffd", "").replace("\r", "\n")
+    
+    def _build_document(
+        self, 
+        content: str, 
+        metadata: dict, 
+        highlights: List = None
+    ) -> DocumentWithHighlights:
+        """Build a DocumentWithHighlights from content and metadata."""
+        title, source = self._extract_title_and_source(metadata)
+        return DocumentWithHighlights(
+            content=content,
+            highlights=highlights or [],
+            title=title,
+            source=source,
+            metadata=metadata,
+        )
     
     @staticmethod
     def _extract_title_and_source(meta: dict) -> tuple[str, str]:
