@@ -13,7 +13,7 @@ Usage:
 """
 
 import os
-from typing import Tuple, Optional, Any
+from typing import Tuple, Any
 from dotenv import load_dotenv
 
 # Load environment variables

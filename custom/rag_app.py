@@ -1,7 +1,7 @@
 """
-RAG Pipeline Service - Consolidated workflow with BGE reranker.
+RAG Pipeline
 
-This service provides an alternative RAG pipeline that uses:
+This pipeline uses:
 1. Query rewriting and multi-query generation
 2. Milvus hybrid search (dense + sparse)
 3. BGE reranker for improved ranking
@@ -16,17 +16,15 @@ import re
 from pathlib import Path
 from typing import AsyncGenerator, Dict, Any, List, Optional
 from types import SimpleNamespace
-from dataclasses import dataclass
+from dotenv import load_dotenv
 
-# Setup path for set-up folder imports
 CUSTOM_DIR = Path(__file__).parent              # custom/
 SETUP_DIR = CUSTOM_DIR / "set-up"               # custom/set-up/
 sys.path.insert(0, str(SETUP_DIR))
 
-from dotenv import load_dotenv
+
 
 import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from pymilvus import connections
 from openai import OpenAI
 import openai
@@ -34,7 +32,6 @@ import openai
 from verbatim_rag.vector_stores import LocalMilvusStore
 from verbatim_rag.index import VerbatimIndex
 from verbatim_rag.embedding_providers import SpladeProvider
-from verbatim_rag.core import VerbatimRAG  # Add VerbatimRAG like eval_models.py uses
 from verbatim_core.extractors import LLMSpanExtractor
 from verbatim_core.response_builder import ResponseBuilder
 from verbatim_core.templates import TemplateManager
@@ -42,7 +39,7 @@ from verbatim_rag.llm_client import LLMClient
 from verbatim_rag.models import DocumentWithHighlights
 from sentence_transformers import SentenceTransformer
 
-# Import from set-up folder (now on sys.path)
+# Import from set-up folder 
 from query_rewriter import QueryRewriter
 from query_generator import QueryGenerator
 from bge_ranker import BGEReranker
@@ -52,18 +49,13 @@ from bge_ranker import BGEReranker
 
 # Load in different terminal the frontend with npm run dev
 
-
 load_dotenv()
 
 DB_PATH = os.getenv("CUSTOM_DB_PATH", "./custom/milvus_verbatim.db")
 
-BANK_NAME = "Raiffeisen Bank International AG"
-BANK_SHORT = "RBI"
-
 # Model configuration
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2" 
 SPARSE_MODEL = "opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill"
-BGE_RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY") 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -72,15 +64,14 @@ LLM_MODEL = "google/gemini-3-flash-preview"
 
 
 # Robust JSON parsing for Gemini/OpenRouter responses
-
 def safe_parse_json(response: str) -> dict:
     """
     Parse JSON from LLM response, handling markdown code blocks and extra text.
-    Gemini often wraps JSON in ```json ... ``` blocks.
+    Gemini/OpenRouter often wraps JSON in ```json ... ``` blocks.
     """
     if not response or not response.strip():
         raise ValueError("Empty response")
-    
+
     content = response.strip()
 
     # Method 1: Extract from markdown code blocks (```json ... ``` or ``` ... ```)
@@ -101,39 +92,6 @@ def safe_parse_json(response: str) -> dict:
     
     # Method 3: Direct parse (already valid JSON)
     return json.loads(content)
-
-
-def safe_parse_template(response: str) -> str:
-    """
-    Parse template from LLM response, handling markdown code blocks.
-    Gemini often wraps templates in ```markdown ... ``` or ``` ... ``` blocks.
-    
-    This function extracts the actual template content from markdown-wrapped responses.
-    """
-    if not response or not response.strip():
-        return ""
-    
-    content = response.strip()
-    
-    # Method 1: Extract from markdown code blocks (```markdown ... ```, ```md ... ```, or ``` ... ```)
-    # This handles cases where Gemini wraps the template in code blocks
-    template_match = re.search(r'```(?:markdown|md)?\s*([\s\S]*?)\s*```', content)
-    if template_match:
-        extracted = template_match.group(1).strip()
-        # Only use the extracted content if it contains template placeholders
-        if '[FACT_' in extracted or '[DISPLAY_SPANS]' in extracted or '[RELEVANT_SENTENCES]' in extracted:
-            return extracted
-    
-    # Method 2: If content has code blocks but extraction didn't find placeholders,
-    # try to find template content outside code blocks
-    if '```' in content:
-        # Remove all code blocks and see if there's valid template content
-        cleaned = re.sub(r'```[\s\S]*?```', '', content).strip()
-        if cleaned and ('[FACT_' in cleaned or '[DISPLAY_SPANS]' in cleaned):
-            return cleaned
-    
-    # Method 3: Return the original content (already valid template)
-    return content
 
 
 # Embedding Provider
@@ -195,9 +153,6 @@ class RAG:
             return
         
         print("Initializing RAG Service...")
-
-        self.bank_name = BANK_NAME
-        self.bank_short = BANK_SHORT
         
         self.openai_client = OpenAI(
         base_url=OPENROUTER_BASE_URL,
@@ -285,13 +240,12 @@ class RAG:
         self.extractor = LLMSpanExtractor(llm_client=self.llm_client)
         self.response_builder = ResponseBuilder()
         self.template_manager = TemplateManager(llm_client=self.llm_client)
-        self.template_manager.use_contextual_mode(use_per_fact=True) # Added to activate contextual mode
+        self.template_manager.use_contextual_mode(use_per_fact=True) # to activate contextual mode
         print("Template manager initialized")
     
     def _patch_llm_client_for_robust_json(self):
         """
-        Patch the LLMClient to handle Gemini's JSON response formats.
-        Matching your benchmark's patch_llm_client_for_robust_json function.
+        Patch the LLMClient to handle LLM's JSON response formats.
         """
         original_complete = self.llm_client.complete
         original_complete_async = self.llm_client.complete_async
@@ -330,8 +284,7 @@ class RAG:
                         print(f"Raw response preview: {response[:300]}...")
                     return {doc_id: [] for doc_id in documents.keys()}
         
-        # Patch span extraction methods (matching your benchmark's patch_llm_client_for_robust_json)
-        # NOTE: Your benchmark does NOT patch template generation, so we don't either
+        # Patch span extraction methods 
         self.llm_client.extract_spans = robust_extract_spans
         self.llm_client.extract_spans_async = robust_extract_spans_async
         self.llm_client.extract_relevant_spans_batch = robust_extract_spans
@@ -345,7 +298,6 @@ class RAG:
         question: str,
         num_docs: int = 5,
         per_query_k: int = 20,
-        bank_name: str = BANK_NAME,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Stream a query response using the rag pipeline.
@@ -366,12 +318,6 @@ class RAG:
             rewritten_question = await asyncio.to_thread(
                 self.query_rewriter.rewrite, question
             )
-            # Use the rewritten query for downstream LLM span extraction (keeps prompts aligned)
-            span_extraction_question = (
-            f"{rewritten_question}\n\n"
-            f"""Clarification: If a question mentions 'contracting party',
-             'organisation', 'entity', 'firm', 'group' then it refers to {self.bank_name})."""
-            )   
 
             # Step 1: Generate search queries from the rewritten question
             print(f"Generating queries...")
@@ -468,7 +414,7 @@ class RAG:
                 "data": [doc.model_dump() for doc in reranked_documents],
             }
             
-            # Step 4: Extract spans using ORIGINAL question (like your benchmark does)
+            # Step 4: Extract spans using ORIGINAL question
             print("Extracting spans...")
             relevant_spans = await asyncio.to_thread(
                 self.extractor.extract_spans, question, wrapped_chunks
@@ -499,7 +445,7 @@ class RAG:
                 "data": [d.model_dump() for d in interim_documents],
             }
             
-            # Step 5: Generate answer using ORIGINAL question (like your benchmark does)
+            # Step 5: Generate answer using ORIGINAL question
             print("Generating answer...")
             
             # Rank spans and split into display vs citation-only

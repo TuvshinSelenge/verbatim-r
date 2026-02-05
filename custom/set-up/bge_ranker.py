@@ -78,13 +78,3 @@ class BGEReranker:
 
         top_chunks = [chunks[i] for i, _ in ranked[:top_k]]
         return top_chunks, ranking
-    
-    @staticmethod
-    def _get_text(c) -> str:
-        if isinstance(c, dict):
-            return c.get("text", "")
-        return getattr(c, "text", "")
-    
-    @staticmethod
-    def _normalize_text(t: str) -> str:
-        return (t or "").replace("\ufffd", "").replace("\r", "\n")
