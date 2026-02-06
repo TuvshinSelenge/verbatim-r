@@ -1,6 +1,6 @@
 [
     {
-      "query": "Please advise the name of the contracting party providing custody and / or client money services in your jurisdiction and responding to this questionnaire.",
+      "query": "Please advise the name of the contracting party providing custody and / or client money services in your jurisdiction and responding to this questionnaire. If applicable, please also advise the name of the local delegate if different from the contracting entity.",
       "top_spans": [
         "| Name of reporting entity | Raiffeisen Bank International AG |",
         "| ESEF Information | Raiffeisen Bank International AG |",
@@ -8,7 +8,7 @@
       ]
     },
     {
-      "query": "Please advise the full legal address and the country of incorporation of the contracting party.",
+      "query": "Please advise the full legal address and the country of incorporation of the contracting party providing custody and / or client money services in your jurisdiction and responding to this questionnaire. If applicable, please also provide this information for the local delegate if different from the contracting entity.",
       "top_spans": [
         "| Address of entity's registered office | Am Stadtpark 9, 1030 Vienna |"
       ]

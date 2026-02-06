@@ -1,0 +1,210 @@
+
+====================================================================================================
+PER-QUERY DETAILS: zilliz-sentences-0.3 | Retrieval: gemini-3-flash-preview
+====================================================================================================
+
+[1] Please advise the name of the contracting party providing custody and / or client money services in your jurisdiction and responding to this questionnaire. If applicable, please also advise the name of the local delegate if different from the contracting entity.
+    Status: [EM]
+    P:1.000  R:1.000  F1:1.000  EM:1
+    Gold spans (3):
+      [1] | Name of reporting entity | Raiffeisen Bank International AG |
+      [2] | ESEF Information | Raiffeisen Bank International AG |
+      [3] RBI AG is the central institution of the Raiffeisen Banking Group Austria (RBG).
+    Extracted spans (10):
+      [1] | ESEF Information                                                      | Raiffeisen Bank International AG   |
+      [2] |-----------------------------------------------------------------------|------------------------------------|
+      [3] | Name of reporting entity                                              | Raiffeisen Bank International AG   |
+      [4] | Legal form of entity                                                  | AG                                 |
+      [5] | Principal place of business                                           | 1030 Vienna                        |
+      [6] | Address of entity's registered office                                 | Am Stadtpark 9, 1030 Vienna        |
+      [7] | Domicile of entity                                                    | Austria                            |
+      [8] | Country of incorporation                                              | Austria                            |
+      [9] | Description of nature of entity's operations and principal activities |                                    |
+      [10] RBI regards Austria, where it is a leading corporate and investment bank, as well as Central and Eastern Europe (CEE) as its home market.
+    >>> EXACT MATCH:
+        Predicted: | ESEF Information                                                      | Raiffeisen Bank International AG   |
+        Gold:      | ESEF Information | Raiffeisen Bank International AG |
+
+[2] Please advise the full legal address and the country of incorporation of the contracting party providing custody and / or client money services in your jurisdiction and responding to this questionnaire. If applicable, please also provide this information for the local delegate if different from the contracting entity.
+    Status: [EM]
+    P:1.000  R:1.000  F1:1.000  EM:1
+    Gold spans (1):
+      [1] | Address of entity's registered office | Am Stadtpark 9, 1030 Vienna |
+    Extracted spans (11):
+      [1] | ESEF Information                                                      | Raiffeisen Bank International AG   |
+      [2] |-----------------------------------------------------------------------|------------------------------------|
+      [3] | Name of reporting entity                                              | Raiffeisen Bank International AG   |
+      [4] | Legal form of entity                                                  | AG                                 |
+      [5] | Principal place of business                                           | 1030 Vienna                        |
+      [6] | Address of entity's registered office                                 | Am Stadtpark 9, 1030 Vienna        |
+      [7] | Domicile of entity                                                    | Austria                            |
+      [8] | Country of incorporation                                              | Austria                            |
+      [9] | Description of nature of entity's operations and principal activities |                                    |
+      [10] RBI regards Austria, where it is a leading corporate and investment bank, as well as Central and Eastern Europe (CEE) as its home market.
+      [11] Its address is Am Stadtpark 9, 1030 Vienna.
+    >>> EXACT MATCH:
+        Predicted: | Address of entity's registered office                                 | Am Stadtpark 9, 1030 Vienna        |
+        Gold:      | Address of entity's registered office | Am Stadtpark 9, 1030 Vienna |
+
+[3] Are you a branch of an entity incorporated in another country?
+    Status: [EM]
+    P:1.000  R:1.000  F1:1.000  EM:1
+    Gold spans (2):
+      [1] | Domicile of entity | Austria |
+      [2] | Country of incorporation | Austria |
+    Extracted spans (9):
+      [1] | ESEF Information                                                      | Raiffeisen Bank International AG   |
+      [2] |-----------------------------------------------------------------------|------------------------------------|
+      [3] | Name of reporting entity                                              | Raiffeisen Bank International AG   |
+      [4] | Legal form of entity                                                  | AG                                 |
+      [5] | Principal place of business                                           | 1030 Vienna                        |
+      [6] | Address of entity's registered office                                 | Am Stadtpark 9, 1030 Vienna        |
+      [7] | Domicile of entity                                                    | Austria                            |
+      [8] | Country of incorporation                                              | Austria                            |
+      [9] | Description of nature of entity's operations and principal activities |                                    |
+    >>> EXACT MATCH:
+        Predicted: | Domicile of entity                                                    | Austria                            |
+        Gold:      | Domicile of entity | Austria |
+
+[4] Have you been subject to any fines, enforcement actions or other admonishments by authorities during the last 12 months?
+    Status: [LOW]
+    P:0.000  R:0.000  F1:0.000  EM:0
+    Gold spans (2):
+      [1] In March 2018, an administrative fine of € 2.7 million (which was calculated by reference to the annual consolidated turnover of RBI and constitutes 0...
+      [2] In the retrial on 25 April 2024, the BVwG again confirmed the Initial FMA Decision in general but reduced the administrative fine down to € 2 million ...
+    Extracted spans (0):
+
+[5] Please confirm that you are subject to effective prudential regulation, including minimum capital requirements.
+    Status: [LOW]
+    P:0.200  R:0.308  F1:0.242  EM:0
+    Gold spans (3):
+      [1] Major banks based in the European Union must adhere, for example, to the Capital Requirements Regulation (CRR), the Capital Requirements Directive (CR...
+      [2] In accordance with the Basel III framework, specific legal regulations are to be considered.
+      [3] These factors are crucial for the calculation of the regulatory minimum total capital requirements.
+    Extracted spans (2):
+      [1] The Raiffeisen-IPS is subject to joint regulatory supervision and capital requirements must also be met on a consolidated basis.
+      [2] The Raiffeisen-IPS is subject to joint regulatory supervision and capital requirements must also be met on a consolidated basis.
+    >>> BEST MATCH (F1=0.242):
+        Predicted: The Raiffeisen-IPS is subject to joint regulatory supervision and capital requirements must also be met on a consolidated basis.
+        Gold:      These factors are crucial for the calculation of the regulatory minimum total capital requirements.
+
+[6] Have regulators required your organisation to undertake any stress testing?
+    Status: [LOW]
+    P:0.000  R:0.000  F1:0.000  EM:0
+    Gold spans (3):
+      [1] Stress tests are conducted for RBI AG and the subsidiary banks on a daily basis and on Group level.
+      [2] This is considered mild, in comparison to regular stress test exercises, such as the EBA stress test where a comparably larger depletion is observed, ...
+      [3] The most recent internally generated stress testing scenarios for liquidity and capital requirements have shown that RBI has adequate resources to wit...
+    Extracted spans (0):
+
+[7] Have there been any changes to your group's ownership structure in the last 12 months?
+    Status: [OK]
+    P:1.000  R:0.821  F1:0.902  EM:0
+    Gold spans (3):
+      [1] The following disclosures satisfy the provisions of § 243a (1) of the Austrian Commercial Code (UGB): (1) As at 31 December 2024, the company's share ...
+      [2] Raiffeisenlandesbank Niederösterreich-Wien AG holds directly and indirectly total around 25.00 per cent of the share capital of the company. By virtue...
+      [3] RBI has no majority shareholder. The eight regional Raiffeisen banks are core shareholders that collectively hold approximately 61.2 per cent of the s...
+    Extracted spans (5):
+      [1] The eight regional Raiffeisen banks are core shareholders that collectively hold approximately 61.2 per cent of the shares, with the remaining shares ...
+      [2] As at 31 December 2024, 525,274 (31 December 2023: 573,938) of those were own shares, and consequently 328,414,347 shares were outstanding at the repo...
+      [3] (3) Raiffeisenlandesbank Niederösterreich-Wien AG holds directly and indirectly total around 25.00 per cent of the share capital of the company.
+      [4] The remaining shares of RBI AG are held in free float, with no other direct or indirect shareholdings amounting to 10 per cent or more known to the Ma...
+      [5] The main companies exercising a significant influence are Raiffeisenlandesbank Niederösterreich-Wien AG, Vienna, as the largest single shareholder, it...
+    >>> BEST MATCH (F1=0.902):
+        Predicted: The eight regional Raiffeisen banks are core shareholders that collectively hold approximately 61.2 per cent of the shares, with the remaining shares ...
+        Gold:      RBI has no majority shareholder. The eight regional Raiffeisen banks are core shareholders that collectively hold approximately 61.2 per cent of the s...
+
+[8] What is your relationship to your group?
+    Status: [EM]
+    P:1.000  R:1.000  F1:1.000  EM:1
+    Gold spans (5):
+      [1] The RBG is organized into three tiers: the independent, local Raiffeisen banks (1st tier), the eight independent regional Raiffeisen banks (2nd tier) ...
+      [2] In turn, the regional Raiffeisen banks are connected to RBI AG through its role as the central institution of the RBG.
+      [3] Within RBG, RBI AG serves as the central institution (as defined by § 27a of the Austrian Banking Act (BWG)) of the regional Raiffeisen banks and othe...
+      [4] RBI AG is the central institution of the Raiffeisen Banking Group Austria (RBG).
+      [5] The Raiffeisen-IPS is controlled by a joint risk council, comprising representatives of RBI AG, the regional Raiffeisen banks and the Raiffeisen banks...
+    Extracted spans (7):
+      [1] In turn, the regional Raiffeisen banks are connected to RBI AG through its role as the central institution of the RBG.
+      [2] Raiffeisen Bank International AG and its Austrian bank subsidiaries, the regional Raiffeisen banks and the local Raiffeisen banks, are part of the agr...
+      [3] Raiffeisen  Bank  International  AG  and  its  Austrian  bank  subsidiaries,  the  regional  Raiffeisen  banks  and  the  local  Raiffeisen banks,  ar...
+      [4] - RBI AG is insured under a group-wide D&O policy.
+      [5] - RBI AG is a member of the Professional Association of Raiffeisen Banks.
+      [6] Upon a change in control of RBI AG which results in the attainment of control by shareholders outside of the Raiffeisen Banking Group Austria, members...
+      [7] RBI AG also serves as the central institution of the Raiffeisen Banking Group at a national level.
+    >>> EXACT MATCH:
+        Predicted: In turn, the regional Raiffeisen banks are connected to RBI AG through its role as the central institution of the RBG.
+        Gold:      In turn, the regional Raiffeisen banks are connected to RBI AG through its role as the central institution of the RBG.
+
+[9] Does your organisation have measures in place to identify and prevent conflicts of interest?
+    Status: [EM]
+    P:1.000  R:1.000  F1:1.000  EM:1
+    Gold spans (4):
+      [1] For a number of years, RBI has had internal policies that govern business transactions in detail in order to avoid conflicts of interest.
+      [2] Management Board and Supervisory Board decisions must be made fairly, honestly and impartially. Both the Management Board and the Supervisory Board of...
+      [3] Members of the Management Board must therefore disclose to the Supervisory Board any significant personal interests in transactions involving the comp...
+      [4] RBI strives to identify and avoid potential conflicts of interest in its business activities and has stringent internal guidelines in this respect. St...
+    Extracted spans (5):
+      [1] - RBI strives to identify and avoid potential conflicts of interest in its business activities and has stringent internal guidelines in this respect.
+      [2] As mentioned above, it defines the standards for customer relations, including the protection of personal and confidential client information, the com...
+      [3] For a number of years, RBI has had internal policies that govern business transactions in detail in order to avoid conflicts of interest.
+      [4] These measures include handling conflicts of interest and complaint management, including documenting and reporting complaints, training employees and...
+      [5] The policies RBI has in place to manage the material sustainability issues relating to consumers include the most important RBI framework, the RBI Cod...
+    >>> EXACT MATCH:
+        Predicted: For a number of years, RBI has had internal policies that govern business transactions in detail in order to avoid conflicts of interest.
+        Gold:      For a number of years, RBI has had internal policies that govern business transactions in detail in order to avoid conflicts of interest.
+
+[10] Please state the credit ratings of the contracting party for long-term Credit Rating S&P?
+    Status: [LOW]
+    P:0.000  R:0.000  F1:0.000  EM:0
+    Gold spans (3):
+      [1] Long-term rating A-
+      [2] Standard & Poor's A-
+      [3] S&P long-term rating A-
+    Extracted spans (1):
+      [1] | Outlook                     | stable                      | negative            |
+    >>> NO MATCH — extracted spans did not overlap with any gold span
+
+[11] Please state the credit ratings of the contracting party for long-term Credit Rating Moody's?
+    Status: [LOW]
+    P:0.000  R:0.000  F1:0.000  EM:0
+    Gold spans (3):
+      [1] Long-term rating A1
+      [2] Moody's A1
+      [3] Moody's Investors Service A1
+    Extracted spans (1):
+      [1] | Outlook                     | stable                      | negative            |
+    >>> NO MATCH — extracted spans did not overlap with any gold span
+
+[12] Please state the credit ratings of the contracting party for long-term Credit Rating Fitch?
+    Status: [OK]
+    Unanswerable: CORRECT (abstained)
+
+[13] Please confirm if your organisation is considered a systematically important financial institution?
+    Status: [LOW]
+    P:0.000  R:0.000  F1:0.000  EM:0
+    Gold spans (2):
+      [1] RBI is subject to the own funds requirements pursuant to Article 92 CRR and the combined capital buffer requirement pursuant to the Austrian Banking A...
+      [2] The Financial Market Stability Board ("FMSG"), which is responsible for this in Austria, has recommended that the Austrian Financial Market Authority ...
+    Extracted spans (0):
+
+[14] What is the total amount of revenue generated by your organisation in 2026?
+    Status: [FAIL]
+    Unanswerable: WRONG (extracted 1 spans)
+      Extracted [1]: | Operating income                                   | 8,701   | 8,827   | (2,340)                          | (2,603)                          | 6,361...
+
+[15] What is the name of the CTO?
+    Status: [OK]
+    Unanswerable: CORRECT (abstained)
+
+[16] What is the long-term Credit Rating from DBRS Morningstar for the contracting party?
+    Status: [OK]
+    Unanswerable: CORRECT (abstained)
+
+
+====================================================================================================
+                   ZILLIZ EXTRACTOR BENCHMARK RESULTS (SPAN EXTRACTION — NO LLM)                    
+====================================================================================================
+Extractor                 | Retrieval                 | EM     | Prec   | Rec    | F1     | Unans.Acc
+----------------------------------------------------------------------------------------------------
+zilliz-sentences-0.3      | gemini-3-flash-preview    | 0.500  | 0.575  | 0.571  | 0.572  | 0.750
+====================================================================================================
