@@ -65,20 +65,21 @@ PER_SUBQ_K = 20
 QUERY_TIMEOUT = 180  # 3 minutes per query
 
 # Zilliz extractor configurations to test
-# "sentences" mode — most gold spans are full sentences; low threshold for recall
+# "sentences" mode : most gold spans are full sentences, low threshold for recall
 ZILLIZ_CONFIGS = [
-    {
-        "name": "zilliz-sentences-0.3",
-        "output_mode": "sentences",
-        "threshold": 0.3,
-        "min_span_tokens": 3,
-        "merge_gap": 2,
-    }
+    # Threshold 0.3: Keeps sentences with >30% probability score.
+    {"name": "sentences-0.3", "output_mode": "sentences", "threshold": 0.3},
+
+    # Threshold 0.5: Keeps sentences with >50% probability score.
+    {"name": "sentences-0.5", "output_mode": "sentences", "threshold": 0.5},
+
+    # Threshold 0.7: Keeps sentences with >70% probability score.
+    {"name": "sentences-0.7", "output_mode": "sentences", "threshold": 0.7},
 ]
 
 
 # =============================================================================
-# CHUNK WRAPPER (SemanticHighlightExtractor needs .text attribute)
+# CHUNK WRAPPER (SemanticHighlightExtractor)
 # =============================================================================
 
 @dataclass

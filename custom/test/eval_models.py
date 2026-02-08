@@ -53,7 +53,11 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # Models to test
 MODELS_TO_TEST = [
+    "openai/gpt-5.1",
+    "moonshotai/kimi-k2-0905",
+    "meta-llama/llama-4-scout",
     "google/gemini-3-flash-preview",
+    "anthropic/claude-sonnet-4.5"
 ]
 
 # Configuration
@@ -64,7 +68,7 @@ QUERY_TIMEOUT = 180  # 3 minutes per query
 
 
 # =============================================================================
-# JSON PARSING UTILITIES (for Gemini's markdown-wrapped responses)
+# JSON PARSING UTILITIES 
 # =============================================================================
 
 def safe_parse_json(response: str) -> dict:
@@ -117,7 +121,7 @@ def patch_llm_client_for_robust_json(llm_client: LLMClient):
 
 
 # =============================================================================
-# TEXT NORMALIZATION FOR METRICS (SQuAD-style)
+# TEXT NORMALIZATION FOR METRICS
 # =============================================================================
 
 def _strip_markdown_tables(text: str) -> str:
@@ -178,7 +182,7 @@ def get_text_and_meta(chunk) -> Tuple[str, dict]:
 
 
 # =============================================================================
-# TIMEOUT HELPER (thread-based, works with blocking I/O)
+# TIMEOUT HELPER 
 # =============================================================================
 
 def run_with_timeout(func, timeout_sec=QUERY_TIMEOUT):
