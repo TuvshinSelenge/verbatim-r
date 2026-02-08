@@ -2,7 +2,7 @@
 Benchmark Script using Zilliz SemanticHighlightExtractor for Span Extraction
 ===========================================================================
 - Retrieval: Uses LLMs via OpenRouter for query rewriting + multi-query search
-- Extraction: Uses Zilliz semantic-highlight model (NO LLM costs!)
+- Extraction: Uses Zilliz semantic-highlight model
 
 Evaluation metrics: SQuAD-style EM, Precision, Recall, F1
 """
@@ -65,21 +65,25 @@ PER_SUBQ_K = 20
 QUERY_TIMEOUT = 180  # 3 minutes per query
 
 # Zilliz extractor configurations to test
-# "sentences" mode : most gold spans are full sentences, low threshold for recall
+# "sentences" mode : most gold spans are full sentences
 ZILLIZ_CONFIGS = [
+
+    #It will keep sentences with probability score greater than the threshold.
+    #The idea is:
+    # 30% will get me more sentences but also more noise.
+    # 50% will get me less sentences but also less noise.
+
     # Threshold 0.3: Keeps sentences with >30% probability score.
     {"name": "sentences-0.3", "output_mode": "sentences", "threshold": 0.3},
 
     # Threshold 0.5: Keeps sentences with >50% probability score.
     {"name": "sentences-0.5", "output_mode": "sentences", "threshold": 0.5},
 
-    # Threshold 0.7: Keeps sentences with >70% probability score.
-    {"name": "sentences-0.7", "output_mode": "sentences", "threshold": 0.7},
 ]
 
 
 # =============================================================================
-# CHUNK WRAPPER (SemanticHighlightExtractor)
+# CHUNK WRAPPER 
 # =============================================================================
 
 @dataclass
@@ -119,12 +123,12 @@ def run_with_timeout(func, timeout_sec=QUERY_TIMEOUT):
         try:
             return future.result(timeout=timeout_sec)
         except concurrent.futures.TimeoutError:
-            print(f"  TIMEOUT after {timeout_sec}s — skipping")
+            print(f"  TIMEOUT after {timeout_sec}s :skipping")
             raise TimeoutError(f"Timed out after {timeout_sec}s")
 
 
 # =============================================================================
-# RETRIEVAL: rewrite → generate → search → rerank (full pipeline)
+# RETRIEVAL: rewrite → generate → search → rerank 
 # =============================================================================
 
 def retrieve_and_rerank(
@@ -166,7 +170,7 @@ def retrieve_and_rerank(
 
 
 # =============================================================================
-# TEXT NORMALIZATION FOR METRICS (SQuAD-style) — self-contained, no external deps
+# TEXT NORMALIZATION FOR METRICS 
 # =============================================================================
 
 def _strip_markdown_tables(text: str) -> str:
@@ -354,7 +358,7 @@ def run_zilliz_extraction_evaluation(
         }
 
         try:
-            # Step 1: Full pipeline retrieval (LLM calls)
+            # Step 1: Full pipeline retrieval 
             reranked, rewritten = run_with_timeout(
                 lambda q=query: retrieve_and_rerank(
                     q, query_rewriter, query_generator, rag_index, reranker

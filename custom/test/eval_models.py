@@ -64,7 +64,7 @@ MODELS_TO_TEST = [
 TOP_K = 5
 PER_SUBQ_K = 20
 SKIP_SENTINEL_1300 = True
-QUERY_TIMEOUT = 180  # 3 minutes per query
+QUERY_TIMEOUT = 180  # 3 minutes per query timeout
 
 
 # =============================================================================
@@ -197,7 +197,7 @@ def run_with_timeout(func, timeout_sec=QUERY_TIMEOUT):
 
 
 # =============================================================================
-# SINGLE-PASS RETRIEVAL: rewrite → generate → search → rerank (done ONCE)
+# SINGLE-PASS RETRIEVAL: rewrite → generate → search → rerank 
 # =============================================================================
 
 def retrieve_and_rerank(
@@ -316,7 +316,7 @@ def evaluate_span_extraction(
 
 
 # =============================================================================
-# UNIFIED EVALUATION (single pass: retrieval + extraction together)
+# UNIFIED EVALUATION 
 # =============================================================================
 
 def run_unified_evaluation(
@@ -331,7 +331,7 @@ def run_unified_evaluation(
     """
     Unified evaluation: single retrieval pass per query, reused for both metrics.
     
-    1. For each retrieval query: rewrite → generate → search → rerank → compute Hit/MRR
+    1. For each retrieval query: rewrite → generate → search → rerank → compute Hit, MRR, Recall@K
        Cache the reranked chunks keyed by query text.
     2. For each extraction query: reuse cached chunks → extract spans → compute EM/F1
        If not cached (query text differs), do a fresh retrieval.
@@ -340,7 +340,7 @@ def run_unified_evaluation(
     """
 
     # =========================================================================
-    # PHASE 1: Retrieval evaluation (cache chunks for reuse)
+    # PHASE 1: Retrieval evaluation 
     # =========================================================================
     print(f"\n{'='*60}")
     print("PHASE 1: RETRIEVAL EVALUATION")
@@ -420,7 +420,7 @@ def run_unified_evaluation(
     chunk_metrics = {"hit_rate": hit_rate, "mrr": mrr, "recall@k": recall_at_k}
 
     # =========================================================================
-    # PHASE 2: Extraction evaluation (reuse cached chunks where possible)
+    # PHASE 2: Extraction evaluation 
     # =========================================================================
     print(f"\n{'='*60}")
     print("PHASE 2: SPAN EXTRACTION EVALUATION (SQuAD-style)")
@@ -448,7 +448,7 @@ def run_unified_evaluation(
             cached = chunk_cache.get(query)
             if cached:
                 chunks, rewritten = cached
-                print(f"   (using cached chunks)")
+                print(f"(using cached chunks)")
             else:
                 # No cache hit — do fresh retrieval
                 chunks, rewritten, _ = run_with_timeout(
@@ -482,10 +482,10 @@ def run_unified_evaluation(
             all_f1.append(metrics["f1"])
 
             status = "EM" if metrics["exact_match"] == 1.0 else ("OK" if metrics["f1"] >= 0.5 else "LOW")
-            print(f"   [{status}] P:{metrics['precision']:.2f} R:{metrics['recall']:.2f} F1:{metrics['f1']:.2f}")
+            print(f"[{status}] P:{metrics['precision']:.2f} R:{metrics['recall']:.2f} F1:{metrics['f1']:.2f}")
 
         except Exception as e:
-            print(f"   ERROR: {e}")
+            print(f"ERROR: {e}")
             all_em.append(0.0)
             all_precision.append(0.0)
             all_recall.append(0.0)
