@@ -154,7 +154,7 @@ def collect_hits_multiquery(
 
 
 # =============================================================================
-# STRATEGY 4: Rewriting + Multi-Query + Reranker (Full Pipeline)
+# STRATEGY 4: Rewriting + Multi-Query + Reranker 
 # =============================================================================
 
 def collect_hits_full_pipeline(

@@ -2,7 +2,7 @@
 Model Benchmark Framework
 =========================
 Tests different LLM models on:
-1. Retrieval metrics (Hit Rate, MRR)
+1. Retrieval metrics (Hit Rate, Recall and MRR)
 2. Extraction metrics (Exact Match, Precision, Recall, F1)
 
 Optimized: Single retrieval pass — chunks are cached and reused for extraction.
@@ -56,8 +56,7 @@ MODELS_TO_TEST = [
     "openai/gpt-5.1",
     "moonshotai/kimi-k2-0905",
     "meta-llama/llama-4-scout",
-    "google/gemini-3-flash-preview",
-    "anthropic/claude-sonnet-4.5"
+    "google/gemini-3-flash-preview"
 ]
 
 # Configuration
