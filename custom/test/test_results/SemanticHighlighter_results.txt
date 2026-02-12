@@ -104,35 +104,27 @@ Gold spans (3):
 1] The following disclosures satisfy the provisions of § 243a (1) of the Austrian Commercial Code (UGB): (1) As at 31 December 2024, the company's share ...
 2] Raiffeisenlandesbank Niederösterreich-Wien AG holds directly and indirectly total around 25.00 per cent of the share capital of the company. By virtue...
 3] RBI has no majority shareholder. The eight regional Raiffeisen banks are core shareholders that collectively hold approximately 61.2 per cent of the s...
-Extracted spans (4):
+Extracted spans (5):
 1] The eight regional Raiffeisen banks are core shareholders that collectively hold approximately 61.2 per cent of the shares, with the remaining shares ...
-2] (3) Raiffeisenlandesbank Niederösterreich-Wien AG holds directly and indirectly total around 25.00 per cent of the share capital of the company.
-3] The regional Raiffeisen banks hold a total of around 61.17 per cent of the voting rights.
+2] As at 31 December 2024, 525,274 (31 December 2023: 573,938) of those were own shares, and consequently 328,414,347 shares were outstanding at the repo...
+3] (3) Raiffeisenlandesbank Niederösterreich-Wien AG holds directly and indirectly total around 25.00 per cent of the share capital of the company.
 4] The remaining shares of RBI AG are held in free float, with no other direct or indirect shareholdings amounting to 10 per cent or more known to the Ma...
+5] The main companies exercising a significant influence are Raiffeisenlandesbank Niederösterreich-Wien AG, Vienna, as the largest single shareholder, it...
 BEST MATCH (F1=0.902):
 Predicted: The eight regional Raiffeisen banks are core shareholders that collectively hold approximately 61.2 per cent of the shares, with the remaining shares ...
 Gold:      RBI has no majority shareholder. The eight regional Raiffeisen banks are core shareholders that collectively hold approximately 61.2 per cent of the s...
 
 [8] What is your relationship to your group?
-    Status: [EM]
-P:1.000  R:1.000  F1:1.000  EM:1
+    Status: [ERROR]
+P:0.000  R:0.000  F1:0.000  EM:0
 Gold spans (5):
 1] The RBG is organized into three tiers: the independent, local Raiffeisen banks (1st tier), the eight independent regional Raiffeisen banks (2nd tier) ...
 2] In turn, the regional Raiffeisen banks are connected to RBI AG through its role as the central institution of the RBG.
 3] Within RBG, RBI AG serves as the central institution (as defined by § 27a of the Austrian Banking Act (BWG)) of the regional Raiffeisen banks and othe...
 4] RBI AG is the central institution of the Raiffeisen Banking Group Austria (RBG).
 5] The Raiffeisen-IPS is controlled by a joint risk council, comprising representatives of RBI AG, the regional Raiffeisen banks and the Raiffeisen banks...
-Extracted spans (7):
-1] In turn, the regional Raiffeisen banks are connected to RBI AG through its role as the central institution of the RBG.
-2] Raiffeisen Bank International AG and its Austrian bank subsidiaries, the regional Raiffeisen banks and the local Raiffeisen banks, are part of the agr...
-3] Raiffeisen  Bank  International  AG  and  its  Austrian  bank  subsidiaries,  the  regional  Raiffeisen  banks  and  the  local  Raiffeisen banks,  ar...
-4] - RBI AG is insured under a group-wide D&O policy.
-5] - RBI AG is a member of the Professional Association of Raiffeisen Banks.
-6] Upon a change in control of RBI AG which results in the attainment of control by shareholders outside of the Raiffeisen Banking Group Austria, members...
-7] RBI AG also serves as the central institution of the Raiffeisen Banking Group at a national level.
-EXACT MATCH:
-Predicted: In turn, the regional Raiffeisen banks are connected to RBI AG through its role as the central institution of the RBG.
-Gold:      In turn, the regional Raiffeisen banks are connected to RBI AG through its role as the central institution of the RBG.
+Extracted spans (0):
+ERROR: Timed out after 180s
 
 [9] Does your organisation have measures in place to identify and prevent conflicts of interest?
     Status: [EM]
@@ -170,15 +162,14 @@ Extracted spans (1):
 NO MATCH extracted spans did not overlap with any gold span
 
 [11] Please state the credit ratings of the contracting party for long-term Credit Rating Moody's?
-    Status: [LOW]
+    Status: [ERROR]
 P:0.000  R:0.000  F1:0.000  EM:0
 Gold spans (3):
 1] Long-term rating A1
 2] Moody's A1
 3] Moody's Investors Service A1
-Extracted spans (1):
-1] | Outlook                     | stable                      | negative            |
-NO MATCH extracted spans did not overlap with any gold span
+Extracted spans (0):
+ERROR: Connection error.
 
 [12] Please state the credit ratings of the contracting party for long-term Credit Rating Fitch?
     Status: [OK]
@@ -274,47 +265,51 @@ Gold spans (3):
 Extracted spans (0):
 
 [7] Have there been any changes to your group's ownership structure in the last 12 months?
-    Status: [OK]
-P:1.000  R:0.821  F1:0.902  EM:0
+    Status: [ERROR]
+P:0.000  R:0.000  F1:0.000  EM:0
 Gold spans (3):
 1] The following disclosures satisfy the provisions of § 243a (1) of the Austrian Commercial Code (UGB): (1) As at 31 December 2024, the company's share ...
 2] Raiffeisenlandesbank Niederösterreich-Wien AG holds directly and indirectly total around 25.00 per cent of the share capital of the company. By virtue...
 3] RBI has no majority shareholder. The eight regional Raiffeisen banks are core shareholders that collectively hold approximately 61.2 per cent of the s...
-Extracted spans (1):
-1] The eight regional Raiffeisen banks are core shareholders that collectively hold approximately 61.2 per cent of the shares, with the remaining shares ...
-BEST MATCH (F1=0.902):
-Predicted: The eight regional Raiffeisen banks are core shareholders that collectively hold approximately 61.2 per cent of the shares, with the remaining shares ...
-Gold:      RBI has no majority shareholder. The eight regional Raiffeisen banks are core shareholders that collectively hold approximately 61.2 per cent of the s...
+Extracted spans (0):
+ERROR: Timed out after 180s
 
 [8] What is your relationship to your group?
-    Status: [ERROR]
-P:0.000  R:0.000  F1:0.000  EM:0
+    Status: [EM]
+P:1.000  R:1.000  F1:1.000  EM:1
 Gold spans (5):
 1] The RBG is organized into three tiers: the independent, local Raiffeisen banks (1st tier), the eight independent regional Raiffeisen banks (2nd tier) ...
 2] In turn, the regional Raiffeisen banks are connected to RBI AG through its role as the central institution of the RBG.
 3] Within RBG, RBI AG serves as the central institution (as defined by § 27a of the Austrian Banking Act (BWG)) of the regional Raiffeisen banks and othe...
 4] RBI AG is the central institution of the Raiffeisen Banking Group Austria (RBG).
 5] The Raiffeisen-IPS is controlled by a joint risk council, comprising representatives of RBI AG, the regional Raiffeisen banks and the Raiffeisen banks...
-Extracted spans (0):
-ERROR: Timed out after 180s
+Extracted spans (4):
+1] The main companies exercising a significant influence are Raiffeisenlandesbank Niederösterreich-Wien AG, Vienna, as the largest single shareholder, it...
+2] In turn, the regional Raiffeisen banks are connected to RBI AG through its role as the central institution of the RBG.
+3] Raiffeisen Bank International AG and its Austrian bank subsidiaries, the regional Raiffeisen banks and the local Raiffeisen banks, are part of the agr...
+4] Raiffeisen  Bank  International  AG  and  its  Austrian  bank  subsidiaries,  the  regional  Raiffeisen  banks  and  the  local  Raiffeisen banks,  ar...
+EXACT MATCH:
+Predicted: In turn, the regional Raiffeisen banks are connected to RBI AG through its role as the central institution of the RBG.
+Gold:      In turn, the regional Raiffeisen banks are connected to RBI AG through its role as the central institution of the RBG.
 
 [9] Does your organisation have measures in place to identify and prevent conflicts of interest?
-    Status: [EM]
-P:1.000  R:1.000  F1:1.000  EM:1
+    Status: [OK]
+P:1.000  R:0.586  F1:0.739  EM:0
 Gold spans (4):
 1] For a number of years, RBI has had internal policies that govern business transactions in detail in order to avoid conflicts of interest.
 2] Management Board and Supervisory Board decisions must be made fairly, honestly and impartially. Both the Management Board and the Supervisory Board of...
 3] Members of the Management Board must therefore disclose to the Supervisory Board any significant personal interests in transactions involving the comp...
 4] RBI strives to identify and avoid potential conflicts of interest in its business activities and has stringent internal guidelines in this respect. St...
-Extracted spans (5):
-1] - RBI strives to identify and avoid potential conflicts of interest in its business activities and has stringent internal guidelines in this respect.
-2] As mentioned above, it defines the standards for customer relations, including the protection of personal and confidential client information, the com...
-3] For a number of years, RBI has had internal policies that govern business transactions in detail in order to avoid conflicts of interest.
-4] These measures include handling conflicts of interest and complaint management, including documenting and reporting complaints, training employees and...
-5] The policies RBI has in place to manage the material sustainability issues relating to consumers include the most important RBI framework, the RBI Cod...
-EXACT MATCH:
-Predicted: For a number of years, RBI has had internal policies that govern business transactions in detail in order to avoid conflicts of interest.
-Gold:      For a number of years, RBI has had internal policies that govern business transactions in detail in order to avoid conflicts of interest.
+Extracted spans (6):
+1] As mentioned above, it defines the standards for customer relations, including the protection of personal and confidential client information, the com...
+2] The policies RBI has in place to manage the material sustainability issues relating to consumers include the most important RBI framework, the RBI Cod...
+3] Both the Management Board and the Supervisory Board of RBI AG are required to disclose any potential conflicts of interest.
+4] Members of the Supervisory Board must immediately report any potential conflicts of interest to the Chairman of the Supervisory Board, who is supporte...
+5] In particular, these cover aspects of preventing economic crime (especially combating money laundering and the financing of terrorism, international s...
+6] Group Compliance is responsible for a wide range of activities, primarily related to financial sanctions, anti-money laundering, , fraud & bribery, an...
+BEST MATCH (F1=0.739):
+Predicted: Both the Management Board and the Supervisory Board of RBI AG are required to disclose any potential conflicts of interest.
+Gold:      Management Board and Supervisory Board decisions must be made fairly, honestly and impartially. Both the Management Board and the Supervisory Board of...
 
 [10] Please state the credit ratings of the contracting party for long-term Credit Rating S&P?
     Status: [LOW]
@@ -364,6 +359,6 @@ Unanswerable: CORRECT (abstained)
 ====================================================================================================
 Extractor                 | Retrieval                 | EM     | Prec   | Rec    | F1     | Unans.Acc
 ----------------------------------------------------------------------------------------------------
-sentences-0.3             | gemini-3-flash-preview    | 0.500  | 0.575  | 0.571  | 0.572  | 0.750
-sentences-0.5             | gemini-3-flash-preview    | 0.375  | 0.438  | 0.426  | 0.431  | 1.000
+sentences-0.3             | gemini-3-flash-preview    | 0.438  | 0.512  | 0.508  | 0.509  | 0.750
+sentences-0.5             | gemini-3-flash-preview    | 0.375  | 0.438  | 0.412  | 0.421  | 1.000
 ====================================================================================================

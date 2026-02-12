@@ -84,7 +84,17 @@ Question: {question}
                 temperature=0,
                 response_format={"type": "json_object"},
             )
-            raw = resp.choices[0].message.content
+            # Some providers occasionally return empty/malformed response envelopes.
+            # Read choices/message/content defensively and fall back to empty string.
+            choices = getattr(resp, "choices", None) or []
+            if not choices:
+                print("  Query generation warning: empty choices in response")
+                raw = ""
+            else:
+                message = getattr(choices[0], "message", None)
+                raw = getattr(message, "content", "") or ""
+                if not raw:
+                    print("  Query generation warning: empty message content in response")
         except Exception as e:
             print(f"  Query generation error: {e}")
             raw = ""

@@ -143,13 +143,13 @@ def retrieve_and_rerank(
       - reranked chunks (for extraction)
       - rewritten query (for extraction)
     """
-    # Rewrite the query (1 LLM call)
+    # Rewrite the query 
     rewritten = query_rewriter.rewrite(query_text)
 
-    # Generate multiple search queries (1 LLM call)
+    # Generate multiple search queries 
     subqs = query_generator.generate_queries(rewritten)
 
-    # Merge results from all sub-queries (vector search only, fast)
+    # Merge results from all sub-queries 
     merged, seen = [], set()
     for q in subqs:
         hits = rag_index.query(q, k=PER_SUBQ_K)
@@ -440,7 +440,7 @@ def run_zilliz_extraction_evaluation(
             time.sleep(2)
 
         per_query_details.append(detail)
-        time.sleep(1)  # Rate limit buffer
+        time.sleep(1)  
 
     aggregate = {
         "exact_match": mean(all_em) if all_em else 0.0,
@@ -480,7 +480,6 @@ def main():
     span_data = json.loads(span_data_path.read_text())
     print(f"Loaded {len(span_data)} span queries")
 
-    # Connect to index
     print(f"\nConnecting to Milvus (DB: {DB_PATH})...")
     rag_index, _ = connect_to_index(db_path=DB_PATH, verbose=False)
 
@@ -638,11 +637,10 @@ def main():
         report_lines.append(line)
     report_lines.append("=" * 100)
 
-    # Print to console
     print("\n".join(report_lines))
 
 
-    output_path = SCRIPT_DIR / "zilliz_benchmark_results.txt"
+    output_path = SCRIPT_DIR / "SemanticHighlighter_results.txt"
     with open(output_path, "w") as f:
         f.write("\n".join(report_lines))
 

@@ -4,8 +4,6 @@ Model Benchmark Framework
 Tests different LLM models on:
 1. Retrieval metrics (Hit Rate, Recall and MRR)
 2. Extraction metrics (Exact Match, Precision, Recall, F1)
-
-Optimized: Single retrieval pass — chunks are cached and reused for extraction.
 """
 
 import json
@@ -63,60 +61,7 @@ MODELS_TO_TEST = [
 TOP_K = 5
 PER_SUBQ_K = 20
 SKIP_SENTINEL_1300 = True
-QUERY_TIMEOUT = 180  # 3 minutes per query timeout
-
-
-# =============================================================================
-# JSON PARSING UTILITIES 
-# =============================================================================
-
-def safe_parse_json(response: str) -> dict:
-    """Parse JSON from LLM response, handling markdown code blocks."""
-    if not response or not response.strip():
-        raise ValueError("Empty response")
-
-    content = response.strip()
-
-    # Method 1: Extract from markdown code blocks
-    json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
-    if json_match:
-        try:
-            return json.loads(json_match.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-
-    # Method 2: Find the first { and last }
-    brace_match = re.search(r'(\{[\s\S]*\})', content)
-    if brace_match:
-        try:
-            return json.loads(brace_match.group(1))
-        except json.JSONDecodeError:
-            pass
-
-    # Method 3: Direct parse
-    return json.loads(content)
-
-
-def patch_llm_client_for_robust_json(llm_client: LLMClient):
-    """Patch the LLMClient to handle various JSON response formats."""
-    original_complete = llm_client.complete
-
-    def robust_extract_spans(question: str, documents: dict) -> dict:
-        prompt = llm_client._build_extraction_prompt(question, documents)
-        try:
-            response = original_complete(prompt, json_mode=True)
-            return safe_parse_json(response)
-        except (json.JSONDecodeError, ValueError):
-            try:
-                response = original_complete(prompt, json_mode=False)
-                return safe_parse_json(response)
-            except (json.JSONDecodeError, ValueError) as e2:
-                print(f"Span extraction failed: {e2}")
-                return {doc_id: [] for doc_id in documents.keys()}
-
-    llm_client.extract_spans = robust_extract_spans
-    llm_client.extract_relevant_spans_batch = robust_extract_spans
-    return llm_client
+QUERY_TIMEOUT = 120  
 
 
 # =============================================================================
@@ -212,13 +157,13 @@ def retrieve_and_rerank(
       - rewritten query (for extraction)
       - preds: list of (source_file, chunk_index) tuples (for retrieval metrics)
     """
-    # Rewrite the query (1 LLM call)
+    # Rewrite the query 
     rewritten = query_rewriter.rewrite(query_text)
 
-    # Generate multiple search queries (1 LLM call)
+    # Generate multiple search queries 
     subqs = query_generator.generate_queries(rewritten)
 
-    # Merge results from all sub-queries (vector search only, fast)
+    # Merge results from all sub-queries 
     merged, seen = [], set()
     for q in subqs:
         hits = rag_index.query(q, k=PER_SUBQ_K)
@@ -404,7 +349,7 @@ def run_unified_evaluation(
 
         status = "HIT" if hit else "MISS"
         print(f"  {status} | RR: {rr:.3f} | Recall@{TOP_K}: {recall_at_k:.3f} ({len(gold_idxs & retrieved_idxs)}/{len(gold_idxs)})")
-        time.sleep(1)  # Rate limit buffer
+        time.sleep(1)  
 
     if retrieval_results:
         hit_rate = mean([r["hit@k"] for r in retrieval_results])
@@ -458,7 +403,7 @@ def run_unified_evaluation(
                 )
                 time.sleep(1)
 
-            # Extract spans (1 LLM call)
+            # Extract spans 
             def do_extract(c=chunks, r=rewritten):
                 spans_raw = rag.extractor.extract_spans(r, c)
                 extracted = []
@@ -572,12 +517,11 @@ def main():
             api_key=OPENROUTER_API_KEY,
             timeout=120.0
         )
-        patch_llm_client_for_robust_json(llm_client)
 
         rag = VerbatimRAG(rag_index, llm_client=llm_client)
         rag.template_manager.use_contextual_mode(use_per_fact=True)
 
-        # Run unified evaluation (single pass)
+        # Run unified evaluation 
         try:
             chunk_metrics, span_metrics = run_unified_evaluation(
                 chunk_data, span_data,
@@ -604,7 +548,7 @@ def main():
             "F1": span_metrics.get("f1", 0)
         })
 
-    # Print final results
+    # final results
     report_lines = []
     report_lines.append("\n\n" + "="*100)
     report_lines.append(f"{'FINAL BENCHMARK RESULTS':^100}")
@@ -621,7 +565,6 @@ def main():
 
     print("\n".join(report_lines))
 
-    # Save results
     output_path = SCRIPT_DIR / "benchmark_results.txt"
     with open(output_path, "w") as f:
         f.write("\n".join(report_lines))

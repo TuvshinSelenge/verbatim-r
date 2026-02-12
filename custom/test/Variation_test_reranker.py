@@ -2,10 +2,11 @@
 Retrieval Strategy Comparison Script
 ====================================
 Compares different retrieval strategies for Hit Rate, Recall@K, and MRR:
-1. Raw Query + Reranker (No LLM)
-2. Query Rewriting + Reranker
-3. Multi-Query Variations + Reranker
-4. Rewriting + Multi-Query + Reranker (Full Pipeline)
+1. Baseline (Vector Only)
+2. Baseline + Reranker (No LLM)
+3. Baseline + Rewriting + Reranker
+4. Baseline + Multi-Query + Reranker
+5. Baseline + Rewriting + Multi-Query + Reranker (Full Pipeline)
 
 Uses the evaluation data from custom/test_data/qa_with_chunk_ids.json
 """
@@ -45,6 +46,8 @@ PER_SUBQ_K = 20
 SEARCH_K = 50  # For raw query strategy
 SKIP_SENTINEL_1300 = True
 QUERY_TIMEOUT = 180  # 3 minutes per query
+MAX_429_RETRIES = 3
+RETRY_BASE_DELAY_SEC = 2
 
 # OpenRouter Configuration
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
@@ -99,20 +102,36 @@ def run_with_timeout(func, timeout_sec=QUERY_TIMEOUT):
             print(f"  TIMEOUT after {timeout_sec}s — skipping")
             raise TimeoutError(f"Timed out after {timeout_sec}s")
 
+
+def is_rate_limit_error(exc: Exception) -> bool:
+    """Best-effort detection of provider/API rate-limit errors."""
+    status_code = getattr(exc, "status_code", None)
+    if status_code == 429:
+        return True
+
+    text = str(exc).lower()
+    return (
+        " 429 " in f" {text} "
+        or "error code: 429" in text
+        or "rate limit" in text
+        or "rate-limited" in text
+    )
+
 # =============================================================================
 # STRATEGY 0: Baseline - Raw Query (Vector Search Only)
 # =============================================================================
 
 def collect_hits_baseline(query_text: str, rag_index, reranker: BGEReranker) -> List[Tuple]:
-    """Direct vector search. No LLM, No Reranker."""
+    """Direct vector search. No LLM, no reranker."""
     hits = rag_index.query(query_text, k=TOP_K)
     return extract_preds(hits)
 
+
 # =============================================================================
-# STRATEGY 1: Raw Query + Reranker (No LLM)
+# STRATEGY 1: Baseline + Reranker (No LLM)
 # =============================================================================
 
-def collect_hits_raw(query_text: str, rag_index, reranker: BGEReranker) -> List[Tuple]:
+def collect_hits_baseline_reranker(query_text: str, rag_index, reranker: BGEReranker) -> List[Tuple]:
     """Direct vector search + reranking. No LLM involved."""
     hits = rag_index.query(query_text, k=SEARCH_K)
     reranked, _ = reranker.rerank(query_text, hits, top_k=TOP_K)
@@ -120,7 +139,7 @@ def collect_hits_raw(query_text: str, rag_index, reranker: BGEReranker) -> List[
 
 
 # =============================================================================
-# STRATEGY 2: Query Rewriting + Reranker
+# STRATEGY 2: Baseline + Rewriting + Reranker
 # =============================================================================
 
 def collect_hits_rewriting(
@@ -137,7 +156,7 @@ def collect_hits_rewriting(
 
 
 # =============================================================================
-# STRATEGY 3: Multi-Query Variations + Reranker (No Rewriting)
+# STRATEGY 3: Baseline + Multi-Query + Reranker (No Rewriting)
 # =============================================================================
 
 def collect_hits_multiquery(
@@ -154,7 +173,7 @@ def collect_hits_multiquery(
 
 
 # =============================================================================
-# STRATEGY 4: Rewriting + Multi-Query + Reranker 
+# STRATEGY 4: Baseline + Rewriting + Multi-Query + Reranker
 # =============================================================================
 
 def collect_hits_full_pipeline(
@@ -211,33 +230,52 @@ def evaluate_strategy(
         gold_idxs = set(expected_idxs)
         print(f"[{i}/{total_queries}] Evaluating: {query[:50]}...")
 
-        try:
-            if strategy_name == "Baseline (Vector Only)":
-                preds = run_with_timeout(
-                    lambda q=query: collect_hits_baseline(q, rag_index, reranker)
-                )
-            elif strategy_name == "Raw + Reranker":
-                preds = run_with_timeout(
-                    lambda q=query: collect_hits_raw(q, rag_index, reranker)
-                )
-            elif strategy_name == "Rewriting + Reranker":
-                preds = run_with_timeout(
-                    lambda q=query: collect_hits_rewriting(q, query_rewriter, rag_index, reranker)
-                )
-            elif strategy_name == "Multi-Query + Reranker":
-                preds = run_with_timeout(
-                    lambda q=query: collect_hits_multiquery(q, rag_index, reranker, query_generator)
-                )
-            elif strategy_name == "Full Pipeline":
-                preds = run_with_timeout(
-                    lambda q=query: collect_hits_full_pipeline(q, query_rewriter, rag_index, reranker, query_generator)
-                )
-            else:
-                raise ValueError(f"Unknown strategy: {strategy_name}")
+        preds = None
+        last_error = None
+        for attempt in range(MAX_429_RETRIES + 1):
+            try:
+                if strategy_name == "Baseline (Vector Only)":
+                    preds = run_with_timeout(
+                        lambda q=query: collect_hits_baseline(q, rag_index, reranker)
+                    )
+                elif strategy_name == "Baseline + Reranker":
+                    preds = run_with_timeout(
+                        lambda q=query: collect_hits_baseline_reranker(q, rag_index, reranker)
+                    )
+                elif strategy_name == "Baseline + Rewriting + Reranker":
+                    preds = run_with_timeout(
+                        lambda q=query: collect_hits_rewriting(q, query_rewriter, rag_index, reranker)
+                    )
+                elif strategy_name == "Baseline + Multi-Query + Reranker":
+                    preds = run_with_timeout(
+                        lambda q=query: collect_hits_multiquery(q, rag_index, reranker, query_generator)
+                    )
+                elif strategy_name == "Baseline + Rewriting + Multi-Query + Reranker":
+                    preds = run_with_timeout(
+                        lambda q=query: collect_hits_full_pipeline(
+                            q, query_rewriter, rag_index, reranker, query_generator
+                        )
+                    )
+                else:
+                    raise ValueError(f"Unknown strategy: {strategy_name}")
 
-        except Exception as e:
-            print(f"  ERROR: {e}")
-            per_query.append({"hit@k": 0, "rr": 0.0})
+                last_error = None
+                break
+            except Exception as e:
+                last_error = e
+                if is_rate_limit_error(e) and attempt < MAX_429_RETRIES:
+                    wait_sec = RETRY_BASE_DELAY_SEC * (2 ** attempt)
+                    print(
+                        f"  RATE LIMITED (attempt {attempt + 1}/{MAX_429_RETRIES + 1}) "
+                        f"— retrying in {wait_sec}s..."
+                    )
+                    time.sleep(wait_sec)
+                    continue
+                break
+
+        if last_error is not None:
+            print(f"  ERROR: {last_error}")
+            per_query.append({"hit@k": 0, "rr": 0.0, "recall@k": 0.0})
             time.sleep(2)  # Rate limit recovery
             continue
 
@@ -291,7 +329,7 @@ def main():
     print("="*70)
     print("RETRIEVAL STRATEGY COMPARISON")
     print("="*70)
-    print("Comparing: Baseline, Raw+Rerank, Rewriting, Multi-Query, Full Pipeline")
+    print("Comparing: reranker-based variants")
     print("="*70)
 
     # Set OPENAI_API_KEY for modules that use it internally
@@ -341,10 +379,10 @@ def main():
 
     for name, kwargs in [
         ("Baseline (Vector Only)", {}),
-        ("Raw + Reranker", {}),
-        ("Rewriting + Reranker", {"query_rewriter": query_rewriter}),
-        ("Multi-Query + Reranker", {"query_generator": query_generator}),
-        ("Full Pipeline", {"query_rewriter": query_rewriter, "query_generator": query_generator}),
+        ("Baseline + Reranker", {}),
+        ("Baseline + Rewriting + Reranker", {"query_rewriter": query_rewriter}),
+        ("Baseline + Multi-Query + Reranker", {"query_generator": query_generator}),
+        ("Baseline + Rewriting + Multi-Query + Reranker", {"query_rewriter": query_rewriter, "query_generator": query_generator}),
     ]:
         results = evaluate_strategy(name, gold_data, rag_index, reranker, **kwargs)
         all_results.append(results)
@@ -354,10 +392,10 @@ def main():
     # ===========================================
     llm_calls = {
         "Baseline (Vector Only)": "0",
-        "Raw + Reranker": "0",
-        "Rewriting + Reranker": "1/query",
-        "Multi-Query + Reranker": "1/query",
-        "Full Pipeline": "2/query"
+        "Baseline + Reranker": "0",
+        "Baseline + Rewriting + Reranker": "1/query",
+        "Baseline + Multi-Query + Reranker": "1/query",
+        "Baseline + Rewriting + Multi-Query + Reranker": "2/query"
     }
 
     print("\n\n" + "="*85)
@@ -381,7 +419,7 @@ def main():
     print(f"Best MRR:       {best_mrr['strategy']} ({best_mrr['mrr']:.3f})")
 
     # Save results
-    output_path = SCRIPT_DIR / "variations_results.txt"
+    output_path = SCRIPT_DIR / "variations_reranker_results.txt"
     with open(output_path, "w") as f:
         f.write("RETRIEVAL STRATEGY COMPARISON RESULTS\n")
         f.write("="*85 + "\n")
