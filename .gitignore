@@ -176,13 +176,6 @@ templates.json
 ui/
 .ruff_cache/
 
-data/
-.qodo
-!custom/data/
-!custom/data/*.json
-custom/results/*.txt
-!custom/results/.gitkeep
-
 # Frontend / Node.js
 frontend/node_modules/
 frontend/.env
