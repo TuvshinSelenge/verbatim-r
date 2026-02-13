@@ -1,26 +1,27 @@
-# BGE Reranker
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 BGE_RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 
+
 class BGEReranker:
     """BGE-based reranker for improved chunk ranking."""
-    
+
     _instance = None
-    
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._initialized = False
         return cls._instance
-    
+
     def __init__(self):
         if self._initialized:
             return
-            
+
         self.device = (
-            "mps" if torch.backends.mps.is_available()
+            "mps"
+            if torch.backends.mps.is_available()
             else ("cuda" if torch.cuda.is_available() else "cpu")
         )
         print(f"Loading BGE reranker: {BGE_RERANKER_MODEL} on {self.device}...")
@@ -30,14 +31,9 @@ class BGEReranker:
         self.model.eval()
         self._initialized = True
         print("BGE Reranker ready")
-    
+
     @torch.inference_mode()
     def rerank(self, query: str, chunks: list, top_k: int = 5, text_key: str = "text"):
-        """
-        Return (top_chunks, ranking) where:
-        - top_chunks: the best `top_k` chunks in descending relevance
-        - ranking: list of {"id": original_index, "score": float} in descending relevance
-        """
         if not chunks:
             return [], []
 
@@ -54,12 +50,13 @@ class BGEReranker:
             padding=True,
             truncation=True,
             return_tensors="pt",
-            max_length=1024,  # speed/accuracy tradeoff
+            max_length=1024,
         ).to(self.device)
 
         scores = (
-            self.model(**inputs, return_dict=True)
-            .logits.view(-1,)
+            self.model(**inputs, return_dict=True).logits.view(
+                -1,
+            )
             .float()
             .detach()
             .cpu()

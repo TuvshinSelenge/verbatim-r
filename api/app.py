@@ -40,7 +40,7 @@ from api.dependencies import (
     check_system_ready,
 )
 from api.services.rag_service import APIService
-from custom.rag_app import get_custom_service
+from custom.app.rag_app import get_custom_service
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

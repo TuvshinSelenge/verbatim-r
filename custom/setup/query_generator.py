@@ -10,20 +10,12 @@ LLM_MODEL = "google/gemini-3-flash-preview"
 
 
 def safe_parse_queries(raw: str, fallback_query: str) -> List[str]:
-    """
-    Parse {"queries": [...]} from raw model output.
-    Works for pure JSON, JSON in code blocks, or JSON mixed with text.
-    Falls back to [fallback_query] if parsing fails.
-    
-    This handles Gemini models which often wrap JSON in ```json ... ``` blocks.
-    """
     if not raw or not raw.strip():
         return [fallback_query]
 
     content = raw.strip()
 
-    # 1) Markdown code block (```json ... ``` or ``` ... ```)
-    m = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
+    m = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", content)
     if m:
         try:
             data = json.loads(m.group(1).strip())
@@ -32,8 +24,7 @@ def safe_parse_queries(raw: str, fallback_query: str) -> List[str]:
         except Exception:
             pass
 
-    # 2) First JSON object in text (handles "thinking" text before JSON)
-    m = re.search(r'(\{[\s\S]*\})', content)
+    m = re.search(r"(\{[\s\S]*\})", content)
     if m:
         try:
             data = json.loads(m.group(1))
@@ -42,7 +33,6 @@ def safe_parse_queries(raw: str, fallback_query: str) -> List[str]:
         except Exception:
             pass
 
-    # 3) Try whole string as direct JSON
     try:
         data = json.loads(content)
         qs = data.get("queries", [])
@@ -53,14 +43,12 @@ def safe_parse_queries(raw: str, fallback_query: str) -> List[str]:
 
 class QueryGenerator:
     """Generates multiple search queries from a user question."""
-    
+
     def __init__(self, client: OpenAI = None, model: str = LLM_MODEL):
         self.client = client or OpenAI()
         self.model = model
-    
+
     def generate_queries(self, question: str) -> List[str]:
-        """Generate multiple search queries for the given question."""
-        
         prompt = f"""
 You generate search queries to retrieve relevant chunks from a bank annual report for: {BANK_NAME} ({BANK_SHORT}).
 
@@ -84,8 +72,6 @@ Question: {question}
                 temperature=0,
                 response_format={"type": "json_object"},
             )
-            # Some providers occasionally return empty/malformed response envelopes.
-            # Read choices/message/content defensively and fall back to empty string.
             choices = getattr(resp, "choices", None) or []
             if not choices:
                 print("  Query generation warning: empty choices in response")
@@ -98,11 +84,8 @@ Question: {question}
         except Exception as e:
             print(f"  Query generation error: {e}")
             raw = ""
-        
-        # Use robust parsing that handles Gemini's markdown-wrapped JSON
+
         queries = safe_parse_queries(raw, fallback_query=question)
-        
-        # Deduplication keeping order
         out, seen = [], set()
         for q in queries:
             if q not in seen:

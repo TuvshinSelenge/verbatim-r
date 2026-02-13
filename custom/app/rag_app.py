@@ -9,7 +9,6 @@ This pipeline uses:
 """
 
 import os
-import sys
 import asyncio
 import json
 import re
@@ -19,8 +18,6 @@ from types import SimpleNamespace
 from dotenv import load_dotenv
 
 CUSTOM_DIR = Path(__file__).parent              # custom/
-SETUP_DIR = CUSTOM_DIR / "set-up"               # custom/set-up/
-sys.path.insert(0, str(SETUP_DIR))
 
 
 
@@ -39,10 +36,8 @@ from verbatim_rag.llm_client import LLMClient
 from verbatim_rag.models import DocumentWithHighlights
 from sentence_transformers import SentenceTransformer
 
-# Import from set-up folder 
-from query_rewriter import QueryRewriter
-from query_generator import QueryGenerator
-from bge_ranker import BGEReranker
+# Import from setup package
+from custom.setup import QueryRewriter, QueryGenerator, BGEReranker
 
 # To run the RAG
 # use this : PYTHONPATH=. uvicorn api.app:app --reload --port 8000
