@@ -27,13 +27,32 @@ TOP_K = 5
 PER_SUBQ_K = 20
 SEARCH_K = 50
 SKIP_SENTINEL_1300 = True
-QUERY_TIMEOUT = 180
+QUERY_TIMEOUT = 120
 MAX_429_RETRIES = 3
 RETRY_BASE_DELAY_SEC = 2
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 MODEL_NAME = "google/gemini-3-flash-preview"
+
+STRATEGIES_FIRST_RUN = [
+    "Baseline (Vector Only)",
+    "Baseline + Reranker",
+    "Baseline + Rewriting + Reranker",
+]
+
+STRATEGIES_SECOND_RUN = [
+    "Baseline + Multi-Query + Reranker",
+    "Baseline + Rewriting + Multi-Query + Reranker",
+]
+
+LLM_CALLS = {
+    "Baseline (Vector Only)": "0",
+    "Baseline + Reranker": "0",
+    "Baseline + Rewriting + Reranker": "1/query",
+    "Baseline + Multi-Query + Reranker": "1/query",
+    "Baseline + Rewriting + Multi-Query + Reranker": "2/query",
+}
 
 
 def collect_hits_baseline(query_text: str, rag_index, reranker: BGEReranker) -> List[Tuple]:
@@ -195,9 +214,9 @@ def evaluate_strategy(
     }
 
 
-def main():
+def run_strategy_suite(selected_strategies: List[str], title: str, output_filename: str) -> List[Dict]:
     print("=" * 70)
-    print("RETRIEVAL STRATEGY COMPARISON")
+    print(title)
     print("=" * 70)
     if OPENROUTER_API_KEY:
         os.environ["OPENAI_API_KEY"] = OPENROUTER_API_KEY
@@ -219,24 +238,24 @@ def main():
     query_rewriter = QueryRewriter(openai_client=openai_client, model=MODEL_NAME)
     query_generator = QueryGenerator(client=openai_client, model=MODEL_NAME)
 
-    # Run each strategy with identical data/config for fair comparison.
-    all_results = []
-    for name, kwargs in [
-        ("Baseline (Vector Only)", {}),
-        ("Baseline + Reranker", {}),
-        ("Baseline + Rewriting + Reranker", {"query_rewriter": query_rewriter}),
-        ("Baseline + Multi-Query + Reranker", {"query_generator": query_generator}),
-        ("Baseline + Rewriting + Multi-Query + Reranker", {"query_rewriter": query_rewriter, "query_generator": query_generator}),
-    ]:
-        all_results.append(evaluate_strategy(name, gold_data, rag_index, reranker, **kwargs))
-
-    llm_calls = {
-        "Baseline (Vector Only)": "0",
-        "Baseline + Reranker": "0",
-        "Baseline + Rewriting + Reranker": "1/query",
-        "Baseline + Multi-Query + Reranker": "1/query",
-        "Baseline + Rewriting + Multi-Query + Reranker": "2/query",
+    strategy_kwargs = {
+        "Baseline (Vector Only)": {},
+        "Baseline + Reranker": {},
+        "Baseline + Rewriting + Reranker": {"query_rewriter": query_rewriter},
+        "Baseline + Multi-Query + Reranker": {"query_generator": query_generator},
+        "Baseline + Rewriting + Multi-Query + Reranker": {
+            "query_rewriter": query_rewriter,
+            "query_generator": query_generator,
+        },
     }
+
+    all_results = []
+    # Run selected strategies with identical data/config for fair comparison.
+    for name in selected_strategies:
+        kwargs = strategy_kwargs.get(name)
+        if kwargs is None:
+            raise ValueError(f"Unknown strategy in selected_strategies: {name}")
+        all_results.append(evaluate_strategy(name, gold_data, rag_index, reranker, **kwargs))
 
     print("\n\n" + "=" * 85)
     print(f"{'FINAL COMPARISON RESULTS':^85}")
@@ -244,21 +263,36 @@ def main():
     print(f"{'Strategy':<30} | {'Hit Rate':<10} | {'Recall@K':<10} | {'MRR':<10} | {'LLM Calls':<10}")
     print("-" * 85)
     for r in all_results:
-        print(f"{r['strategy']:<30} | {r['hit_rate']:.3f}      | {r['recall@k']:.3f}      | {r['mrr']:.3f}      | {llm_calls.get(r['strategy'], '?')}")
+        print(
+            f"{r['strategy']:<30} | {r['hit_rate']:.3f}      | {r['recall@k']:.3f}      | {r['mrr']:.3f}      | "
+            f"{LLM_CALLS.get(r['strategy'], '?')}"
+        )
     print("=" * 85)
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = RESULTS_DIR / "variations_reranker_results.txt"
+    output_path = RESULTS_DIR / output_filename
     with open(output_path, "w") as f:
-        f.write("RETRIEVAL STRATEGY COMPARISON RESULTS\n")
+        f.write(f"{title}\n")
         f.write("=" * 85 + "\n")
         f.write(f"{'Strategy':<30} | {'Hit Rate':<10} | {'Recall@K':<10} | {'MRR':<10} | {'LLM Calls':<10}\n")
         f.write("-" * 85 + "\n")
         for r in all_results:
-            f.write(f"{r['strategy']:<30} | {r['hit_rate']:.3f}      | {r['recall@k']:.3f}      | {r['mrr']:.3f}      | {llm_calls.get(r['strategy'], '?')}\n")
+            f.write(
+                f"{r['strategy']:<30} | {r['hit_rate']:.3f}      | {r['recall@k']:.3f}      | {r['mrr']:.3f}      | "
+                f"{LLM_CALLS.get(r['strategy'], '?')}\n"
+            )
         f.write("=" * 85 + "\n")
 
     print(f"\nResults saved to: {output_path}")
+    return all_results
+
+
+def main():
+    run_strategy_suite(
+        selected_strategies=STRATEGIES_FIRST_RUN,
+        title="RETRIEVAL STRATEGY COMPARISON (PART 1: BASELINE/REWRITING)",
+        output_filename="variations_reranker_results_part1.txt",
+    )
 
 
 if __name__ == "__main__":

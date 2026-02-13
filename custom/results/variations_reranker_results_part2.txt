@@ -1,0 +1,7 @@
+RETRIEVAL STRATEGY COMPARISON (PART 2: MULTI-QUERY)
+=====================================================================================
+Strategy                       | Hit Rate   | Recall@K   | MRR        | LLM Calls 
+-------------------------------------------------------------------------------------
+Baseline + Multi-Query + Reranker | 0.833      | 0.542      | 0.708      | 1/query
+Baseline + Rewriting + Multi-Query + Reranker | 1.000      | 0.596      | 0.704      | 2/query
+=====================================================================================

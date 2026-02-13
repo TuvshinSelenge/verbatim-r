@@ -14,7 +14,8 @@
 Run from repository root:
 
 - `python -m custom.benchmarks.suites.model_benchmark`
-- `python -m custom.benchmarks.suites.strategy_comparison`
+- `python -m custom.benchmarks.suites.strategy_comparison` (part 1: baseline, baseline+reranker, baseline+rewriting+reranker)
+- `python -m custom.benchmarks.suites.strategy_comparison_part2` (part 2: multi-query strategies)
 - `python -m custom.benchmarks.suites.reranker_comparison`
 - `python -m custom.benchmarks.suites.semantic_highlighter`
 

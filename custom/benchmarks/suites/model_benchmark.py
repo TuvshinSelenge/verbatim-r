@@ -35,10 +35,10 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 MODELS_TO_TEST = [
-    "openai/gpt-5.1",
+    "google/gemini-3-flash-preview",
     "moonshotai/kimi-k2-0905",
     "meta-llama/llama-4-scout",
-    "google/gemini-3-flash-preview",
+    "openai/gpt-5.1"
 ]
 
 TOP_K = 5

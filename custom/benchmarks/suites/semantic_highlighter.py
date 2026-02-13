@@ -39,7 +39,7 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 RETRIEVAL_MODELS = ["google/gemini-3-flash-preview"]
 TOP_K = 5
 PER_SUBQ_K = 20
-QUERY_TIMEOUT = 180
+QUERY_TIMEOUT = 120
 
 # Threshold 0.3: Keeps sentences with >30% probability score.
 # Threshold Default: Keeps sentences with >50% probability score.
