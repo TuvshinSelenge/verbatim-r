@@ -1,0 +1,1 @@
+"""Primary benchmark collection namespace."""

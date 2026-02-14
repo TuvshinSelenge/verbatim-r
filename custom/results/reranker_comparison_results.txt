@@ -2,10 +2,10 @@ RERANKER COMPARISON RESULTS
 ===============================================================================================
 Reranker                            | Hit Rate   | Recall@K   | MRR        | Evaluated 
 -----------------------------------------------------------------------------------------------
-BAAI/bge-reranker-v2-m3             | 0.167      | 0.083      | 0.111      | 12        
+BAAI/bge-reranker-v2-m3             | 0.083      | 0.042      | 0.028      | 12        
 cross-encoder/ms-marco-MiniLM-L-6-v2 | 0.000      | 0.000      | 0.000      | 12        
 cross-encoder/ms-marco-MiniLM-L-12-v2 | 0.000      | 0.000      | 0.000      | 12        
 ===============================================================================================
-Best Hit Rate:  BAAI/bge-reranker-v2-m3 (0.167)
-Best Recall@K:  BAAI/bge-reranker-v2-m3 (0.083)
-Best MRR:       BAAI/bge-reranker-v2-m3 (0.111)
+Best Hit Rate:  BAAI/bge-reranker-v2-m3 (0.083)
+Best Recall@K:  BAAI/bge-reranker-v2-m3 (0.042)
+Best MRR:       BAAI/bge-reranker-v2-m3 (0.028)

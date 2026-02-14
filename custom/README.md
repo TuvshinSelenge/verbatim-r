@@ -4,7 +4,7 @@
 
 - `pipeline/` - shared retrieval, metrics, runtime, and IO helpers
 - `setup/` - reusable setup components for index/reranker/query modules
-- `benchmarks/suites/` - benchmark implementations
+- `benchmarks/collection/` - benchmark implementations
 - `tests/` - unit tests
 - `data/` - benchmark input datasets
 - `results/` - benchmark outputs
@@ -13,9 +13,9 @@
 
 Run from repository root:
 
-- `python -m custom.benchmarks.suites.model_benchmark`
-- `python -m custom.benchmarks.suites.strategy_comparison` (part 1: baseline, baseline+reranker, baseline+rewriting+reranker)
-- `python -m custom.benchmarks.suites.strategy_comparison_part2` (part 2: multi-query strategies)
-- `python -m custom.benchmarks.suites.reranker_comparison`
-- `python -m custom.benchmarks.suites.semantic_highlighter`
+- `python -m custom.benchmarks.collection.model_benchmark`
+- `python -m custom.benchmarks.collection.strategy_comparison` (part 1: baseline, baseline+reranker, baseline+rewriting+reranker)
+- `python -m custom.benchmarks.collection.strategy_comparison_part2` (part 2: multi-query strategies)
+- `python -m custom.benchmarks.collection.reranker_comparison`
+- `python -m custom.benchmarks.collection.semantic_highlighter`
 

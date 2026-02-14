@@ -4,7 +4,7 @@ Retrieval Strategy Comparison Script (Part 2)
 Runs only the multi-query based strategies.
 """
 
-from custom.benchmarks.suites.strategy_comparison import (
+from custom.benchmarks.collection.strategy_comparison import (
     STRATEGIES_SECOND_RUN,
     run_strategy_suite,
 )
