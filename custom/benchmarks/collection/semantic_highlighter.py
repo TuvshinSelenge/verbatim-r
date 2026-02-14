@@ -43,9 +43,11 @@ QUERY_TIMEOUT = 120
 
 # Threshold 0.3: Keeps sentences with >30% probability score.
 # Threshold Default: Keeps sentences with >50% probability score.
+# Threshold 0.7: Keeps sentences with >70% probability score, resulting in more conservative extraction.
 ZILLIZ_CONFIGS = [
     {"name": "sentences-0.3", "output_mode": "sentences", "threshold": 0.3},
     {"name": "sentences-0.5", "output_mode": "sentences", "threshold": 0.5},
+    {"name": "sentences-0.7", "output_mode": "sentences", "threshold": 0.7},
 ]
 
 
