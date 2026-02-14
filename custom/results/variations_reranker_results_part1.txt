@@ -1,8 +1,10 @@
-RETRIEVAL STRATEGY COMPARISON (PART 1: BASELINE/REWRITING)
+RETRIEVAL STRATEGY COMPARISON 
 =====================================================================================
 Strategy                       | Hit Rate   | Recall@K   | MRR        | LLM Calls 
 -------------------------------------------------------------------------------------
 Baseline (Vector Only)         | 0.583      | 0.368      | 0.542      | 0
 Baseline + Reranker            | 0.667      | 0.292      | 0.625      | 0
 Baseline + Rewriting + Reranker | 0.833      | 0.478      | 0.569      | 1/query
+Baseline + Multi-Query + Reranker | 0.833      | 0.542      | 0.708      | 1/query
+Baseline (Full Pipeline)        | 1.000      | 0.596      | 0.704      | 2/query
 =====================================================================================

@@ -39,9 +39,9 @@ PER_SUBQ_K = 20
 SKIP_SENTINEL_1300 = True
 QUERY_TIMEOUT = 120
 RERANKERS_TO_TEST = [
-    "BAAI/bge-reranker-v2-m3",
     "cross-encoder/ms-marco-MiniLM-L-6-v2",
     "cross-encoder/ms-marco-MiniLM-L-12-v2",
+    "BAAI/bge-reranker-v2-m3",
 ]
 
 

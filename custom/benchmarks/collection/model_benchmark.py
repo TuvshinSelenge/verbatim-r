@@ -111,6 +111,7 @@ def run_unified_evaluation(
 
     # Phase 2: extraction metrics. Reuse cached chunks when possible.
     all_em, all_precision, all_recall, all_f1 = [], [], [], []
+    unanswerable_correct = []
     total_span_queries = len(span_data)
     for i, item in enumerate(span_data, 1):
         query = item["query"]
@@ -118,6 +119,7 @@ def run_unified_evaluation(
         gold_spans = item.get("top_spans", [])
         if isinstance(gold_spans, str):
             gold_spans = [gold_spans] if gold_spans else []
+        is_unanswerable = len(gold_spans) == 0
         try:
             cached = chunk_cache.get(query)
             if cached:
@@ -149,18 +151,23 @@ def run_unified_evaluation(
             all_precision.append(metrics["precision"])
             all_recall.append(metrics["recall"])
             all_f1.append(metrics["f1"])
+            if is_unanswerable:
+                unanswerable_correct.append(1 if len(extracted_spans) == 0 else 0)
         except Exception:
             print("  error during extraction/eval, counting as 0")
             all_em.append(0.0)
             all_precision.append(0.0)
             all_recall.append(0.0)
             all_f1.append(0.0)
+            if is_unanswerable:
+                unanswerable_correct.append(0)
 
     span_metrics = {
         "exact_match": mean(all_em) if all_em else 0.0,
         "precision": mean(all_precision) if all_precision else 0.0,
         "recall": mean(all_recall) if all_recall else 0.0,
         "f1": mean(all_f1) if all_f1 else 0.0,
+        "unanswerable_accuracy": mean(unanswerable_correct) if unanswerable_correct else 1.0,
     }
     return chunk_metrics, span_metrics
 
@@ -208,7 +215,13 @@ def main():
             )
         except Exception:
             chunk_metrics = {"hit_rate": 0.0, "mrr": 0.0, "recall@k": 0.0}
-            span_metrics = {"exact_match": 0.0, "precision": 0.0, "recall": 0.0, "f1": 0.0}
+            span_metrics = {
+                "exact_match": 0.0,
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0,
+                "unanswerable_accuracy": 0.0,
+            }
 
         results_table.append({
             "Model": model,
@@ -219,17 +232,24 @@ def main():
             "Prec": span_metrics.get("precision", 0),
             "Rec": span_metrics.get("recall", 0),
             "F1": span_metrics.get("f1", 0),
+            "Unans.Acc": span_metrics.get("unanswerable_accuracy", 0),
         })
 
     report_lines = []
     report_lines.append("\n\n" + "=" * 100)
     report_lines.append(f"{'FINAL BENCHMARK RESULTS':^100}")
     report_lines.append("=" * 100)
-    header = f"{'Model':<35} | {'Hit Rate':<8} | {'Recall@K':<8} | {'MRR':<6} | {'EM':<6} | {'Prec':<6} | {'Rec':<6} | {'F1':<6}"
+    header = (
+        f"{'Model':<35} | {'Hit Rate':<8} | {'Recall@K':<8} | {'MRR':<6} | "
+        f"{'EM':<6} | {'Prec':<6} | {'Rec':<6} | {'F1':<6} | {'Unans.Acc':<9}"
+    )
     report_lines.append(header)
     report_lines.append("-" * 100)
     for row in results_table:
-        line = f"{row['Model']:<35} | {row['Hit Rate']:.3f}    | {row['Recall@K']:.3f}    | {row['MRR']:.3f}  | {row['EM']:.3f}  | {row['Prec']:.3f}  | {row['Rec']:.3f}  | {row['F1']:.3f}"
+        line = (
+            f"{row['Model']:<35} | {row['Hit Rate']:.3f}    | {row['Recall@K']:.3f}    | {row['MRR']:.3f}  | "
+            f"{row['EM']:.3f}  | {row['Prec']:.3f}  | {row['Rec']:.3f}  | {row['F1']:.3f}  | {row['Unans.Acc']:.3f}"
+        )
         report_lines.append(line)
     report_lines.append("=" * 100)
     print("\n".join(report_lines))
