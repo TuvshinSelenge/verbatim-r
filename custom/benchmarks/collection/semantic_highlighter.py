@@ -21,7 +21,19 @@ from custom.pipeline.metrics import (
     get_bertscore_scorer,
 )
 from custom.pipeline.retrieval import retrieve_and_rerank as shared_retrieve_and_rerank
-from custom.pipeline.runtime import run_with_timeout
+from custom.pipeline.io import (
+    append_span_metric_scores,
+    append_zero_span_metric_scores,
+    build_benchmark_header_and_rows,
+    build_table_report_lines,
+    init_span_metric_lists,
+    make_benchmark_result_row,
+    print_and_write_report,
+    run_with_timeout,
+    summarize_span_metric_lists,
+    zero_chunk_metrics,
+    zero_span_metrics,
+)
 from custom.pipeline.types import SearchResultWrapper
 
 load_dotenv()
@@ -52,7 +64,9 @@ MAX_EXTRACTED_SPANS = 5
 # Threshold Default: Keeps sentences with >50% probability score.
 # Threshold 0.7: Keeps sentences with >70% probability score, resulting in more conservative extraction.
 ZILLIZ_CONFIGS = [
-    {"name": "sentences-0.5", "output_mode": "sentences", "threshold": 0.5}
+    {"name": "sentences-0.3", "output_mode": "sentences", "threshold": 0.3},
+    {"name": "sentences-0.5", "output_mode": "sentences", "threshold": 0.5},
+    {"name": "sentences-0.7", "output_mode": "sentences", "threshold": 0.7},
 ]
 
 
@@ -78,13 +92,12 @@ def run_zilliz_extraction_evaluation(
     retrieval_cache: Optional[Dict[str, Tuple[list, str, List[Tuple]]]] = None,
 ) -> Tuple[Dict, List[Dict]]:
     # Cache stores retrieval output per query:
-    #   query -> (reranked_chunks, rewritten_query)
+    # query -> (reranked_chunks, rewritten_query)
     # This lets us run extraction repeatedly with different extractor settings
     # without paying retrieval cost again.
     retrieval_cache = retrieval_cache or {}
     all_hit, all_rr, all_recall_k = [], [], []
-    all_precision, all_recall, all_f1 = [], [], []
-    all_rouge_f1, all_bert_f1 = [], []
+    span_metric_lists = init_span_metric_lists()
     unanswerable_correct = []
     per_query_details = []
     total_queries = len(gold_data)
@@ -152,15 +165,18 @@ def run_zilliz_extraction_evaluation(
             detail["extracted_spans"] = extracted_spans
             if not is_unanswerable:
                 token_metrics = compute_token_precision_recall_f1(extracted_spans, gold_spans)
-                _, _, rouge_f1 = compute_rouge_l_best_match_prf(extracted_spans, gold_spans)
-                _, _, bert_f1 = compute_bertscore_best_match_prf(
+                rouge_scores = compute_rouge_l_best_match_prf(extracted_spans, gold_spans)
+                bert_scores = compute_bertscore_best_match_prf(
                     extracted_spans, gold_spans, scorer=bert_scorer
                 )
-                all_precision.append(token_metrics["precision"])
-                all_recall.append(token_metrics["recall"])
-                all_f1.append(token_metrics["f1"])
-                all_rouge_f1.append(rouge_f1)
-                all_bert_f1.append(bert_f1)
+                append_span_metric_scores(
+                    metric_lists=span_metric_lists,
+                    token_metrics=token_metrics,
+                    rouge_scores=rouge_scores,
+                    bert_scores=bert_scores,
+                )
+                _, _, rouge_f1 = rouge_scores
+                _, _, bert_f1 = bert_scores
                 detail["metrics"] = {
                     "precision": token_metrics["precision"],
                     "recall": token_metrics["recall"],
@@ -192,11 +208,7 @@ def run_zilliz_extraction_evaluation(
             detail["status"] = "ERROR"
             detail["error"] = str(e)
             if not is_unanswerable:
-                all_precision.append(0.0)
-                all_recall.append(0.0)
-                all_f1.append(0.0)
-                all_rouge_f1.append(0.0)
-                all_bert_f1.append(0.0)
+                append_zero_span_metric_scores(span_metric_lists)
             if is_unanswerable:
                 unanswerable_correct.append(0)
             time.sleep(2)
@@ -207,12 +219,7 @@ def run_zilliz_extraction_evaluation(
         "hit_rate": mean(all_hit) if all_hit else 0.0,
         "recall@k": mean(all_recall_k) if all_recall_k else 0.0,
         "mrr": mean(all_rr) if all_rr else 0.0,
-        "precision": mean(all_precision) if all_precision else 0.0,
-        "recall": mean(all_recall) if all_recall else 0.0,
-        "f1": mean(all_f1) if all_f1 else 0.0,
-        "rouge_l_f1": mean(all_rouge_f1) if all_rouge_f1 else 0.0,
-        "bertscore_f1": mean(all_bert_f1) if all_bert_f1 else 0.0,
-        "unanswerable_accuracy": mean(unanswerable_correct) if unanswerable_correct else 1.0,
+        **summarize_span_metric_lists(span_metric_lists, unanswerable_correct),
     }
     return aggregate, per_query_details
 
@@ -278,56 +285,39 @@ def main():
                     retrieval_cache,
                 )
             except Exception:
-                span_metrics = {
-                    "hit_rate": 0.0,
-                    "recall@k": 0.0,
-                    "mrr": 0.0,
-                    "f1": 0.0,
-                    "rouge_l_f1": 0.0,
-                    "bertscore_f1": 0.0,
-                    "unanswerable_accuracy": 0.0,
-                }
+                span_metrics = zero_span_metrics()
+                chunk_metrics = zero_chunk_metrics()
                 query_details = []
-            results_table.append({
-                "Extractor": zilliz_config["name"],
-                "Retrieval": retrieval_model.split("/")[-1],
-                "Hit Rate": span_metrics.get("hit_rate", 0),
-                "Recall@K": span_metrics.get("recall@k", 0),
-                "MRR": span_metrics.get("mrr", 0),
-                "Precision": span_metrics.get("precision", 0),
-                "Recall": span_metrics.get("recall", 0),
-                "F1": span_metrics.get("f1", 0),
-                "RougeF1": span_metrics.get("rouge_l_f1", 0),
-                "BertF1": span_metrics.get("bertscore_f1", 0),
-                "Unans.Acc": span_metrics.get("unanswerable_accuracy", 0),
-                "details": query_details,
-            })
+            else:
+                chunk_metrics = {
+                    "hit_rate": span_metrics.get("hit_rate", 0.0),
+                    "recall@k": span_metrics.get("recall@k", 0.0),
+                    "mrr": span_metrics.get("mrr", 0.0),
+                }
+            results_table.append(
+                make_benchmark_result_row(
+                    labels={
+                        "Extractor": zilliz_config["name"],
+                        "Retrieval": retrieval_model.split("/")[-1],
+                    },
+                    chunk_metrics=chunk_metrics,
+                    span_metrics=span_metrics,
+                    extras={"details": query_details},
+                )
+            )
 
-    report_lines = []
-    report_lines.append("=" * 140)
-    report_lines.append(f"{'ZILLIZ EXTRACTOR BENCHMARK RESULTS':^140}")
-    report_lines.append("=" * 140)
-    header = (
-        f"{'Extractor':<20} | {'Retrieval':<22} | {'Hit Rate':<8} | {'Recall@K':<8} | {'MRR':<6} | "
-        f"{'Precision':<9} | {'Recall':<6} | {'F1':<6} | "
-        f"{'RougeF1':<8} | {'BertF1':<8} | {'Unans.Acc':<9}"
+    header, row_lines = build_benchmark_header_and_rows(
+        rows=results_table,
+        leading_columns=[("Extractor", 20), ("Retrieval", 22)],
     )
-    report_lines.append(header)
-    report_lines.append("-" * 140)
-    for row in results_table:
-        report_lines.append(
-            f"{row['Extractor']:<20} | {row['Retrieval']:<22} | {row['Hit Rate']:.3f}    | {row['Recall@K']:.3f}    | {row['MRR']:.3f}  | "
-            f"{row['Precision']:.3f}     | {row['Recall']:.3f}  | {row['F1']:.3f}  | "
-            f"{row['RougeF1']:.3f}    | {row['BertF1']:.3f}    | {row['Unans.Acc']:.3f}"
-        )
-    report_lines.append("=" * 140)
-    print("\n".join(report_lines))
-
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    report_lines = build_table_report_lines(
+        title="ZILLIZ EXTRACTOR BENCHMARK RESULTS",
+        width=140,
+        header=header,
+        row_lines=row_lines,
+    )
     output_path = RESULTS_DIR / "SemanticHighlighter_results.txt"
-    with open(output_path, "w") as f:
-        f.write("\n".join(report_lines))
-    print(f"\nResults saved to: {output_path}")
+    print_and_write_report(report_lines, output_path)
 
 
 if __name__ == "__main__":

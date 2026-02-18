@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Dict, List
 
 
 @dataclass
@@ -7,24 +6,14 @@ class SearchResultWrapper:
     text: str
 
 
-@dataclass
-class RetrievalMetrics:
-    hit_rate: float
-    recall_at_k: float
-    mrr: float
-
-
-@dataclass
-class SpanMetrics:
-    exact_match: float
-    precision: float
-    recall: float
-    f1: float
-
-
-@dataclass
-class BenchmarkRow:
-    model: str
-    retrieval: Dict[str, float]
-    extraction: Dict[str, float]
-    details: List[dict]
+@dataclass(frozen=True)
+class TokenPairMatchCandidate:
+    """
+    One token-overlap match candidate between a prediction and a gold span.
+    """
+    pair_f1: float
+    tp: int
+    pred_idx: int
+    gold_idx: int
+    fp: int
+    fn: int

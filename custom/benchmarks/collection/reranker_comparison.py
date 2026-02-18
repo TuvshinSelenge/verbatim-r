@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 
 from custom.setup import connect_to_index, QueryRewriter, QueryGenerator
 from custom.pipeline.retrieval import extract_preds, merge_and_dedup
-from custom.pipeline.runtime import run_with_timeout
+from custom.pipeline.io import run_with_timeout
 
 load_dotenv()
 

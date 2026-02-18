@@ -25,7 +25,19 @@ from custom.pipeline.metrics import (
     flatten_extracted_spans,
     get_bertscore_scorer,
 )
-from custom.pipeline.runtime import run_with_timeout
+from custom.pipeline.io import (
+    append_span_metric_scores,
+    append_zero_span_metric_scores,
+    build_benchmark_header_and_rows,
+    build_table_report_lines,
+    init_span_metric_lists,
+    make_benchmark_result_row,
+    print_and_write_report,
+    run_with_timeout,
+    summarize_span_metric_lists,
+    zero_chunk_metrics,
+    zero_span_metrics,
+)
 from verbatim_rag.core import VerbatimRAG
 from verbatim_rag.llm_client import LLMClient
 
@@ -120,9 +132,7 @@ def run_unified_evaluation(
     chunk_metrics = {"hit_rate": hit_rate, "mrr": mrr, "recall@k": recall_at_k}
 
     # Phase 2: extraction metrics. Reuse cached chunks when possible.
-    all_precision, all_recall, all_f1 = [], [], []
-    all_rouge_p, all_rouge_r, all_rouge_f1 = [], [], []
-    all_bert_p, all_bert_r, all_bert_f1 = [], [], []
+    span_metric_lists = init_span_metric_lists()
     unanswerable_correct = []
     total_span_queries = len(span_data)
     for i, item in enumerate(span_data, 1):
@@ -153,52 +163,28 @@ def run_unified_evaluation(
             extracted_spans = run_with_timeout(do_extract, timeout_sec=QUERY_TIMEOUT)
             # Token-level P/R/F1 with one-to-one span alignment.
             token_metrics = compute_token_precision_recall_f1(extracted_spans, gold_spans)
-            all_precision.append(token_metrics["precision"])
-            all_recall.append(token_metrics["recall"])
-            all_f1.append(token_metrics["f1"])
-
             # ROUGE-L best-match aggregation.
-            r_p, r_r, r_f1 = compute_rouge_l_best_match_prf(extracted_spans, gold_spans)
-            all_rouge_p.append(r_p)
-            all_rouge_r.append(r_r)
-            all_rouge_f1.append(r_f1)
+            rouge_scores = compute_rouge_l_best_match_prf(extracted_spans, gold_spans)
 
             # BERTScore best-match aggregation.
-            b_p, b_r, b_f1 = compute_bertscore_best_match_prf(
+            bert_scores = compute_bertscore_best_match_prf(
                 extracted_spans, gold_spans, scorer=bert_scorer
             )
-            all_bert_p.append(b_p)
-            all_bert_r.append(b_r)
-            all_bert_f1.append(b_f1)
-
+            append_span_metric_scores(
+                metric_lists=span_metric_lists,
+                token_metrics=token_metrics,
+                rouge_scores=rouge_scores,
+                bert_scores=bert_scores,
+            )
             if is_unanswerable:
                 unanswerable_correct.append(1 if len(extracted_spans) == 0 else 0)
         except Exception:
             print("  error during extraction/eval, counting as 0")
-            all_precision.append(0.0)
-            all_recall.append(0.0)
-            all_f1.append(0.0)
-            all_rouge_p.append(0.0)
-            all_rouge_r.append(0.0)
-            all_rouge_f1.append(0.0)
-            all_bert_p.append(0.0)
-            all_bert_r.append(0.0)
-            all_bert_f1.append(0.0)
+            append_zero_span_metric_scores(span_metric_lists)
             if is_unanswerable:
                 unanswerable_correct.append(0)
 
-    span_metrics = {
-        "precision": mean(all_precision) if all_precision else 0.0,
-        "recall": mean(all_recall) if all_recall else 0.0,
-        "f1": mean(all_f1) if all_f1 else 0.0,
-        "rouge_l_precision": mean(all_rouge_p) if all_rouge_p else 0.0,
-        "rouge_l_recall": mean(all_rouge_r) if all_rouge_r else 0.0,
-        "rouge_l_f1": mean(all_rouge_f1) if all_rouge_f1 else 0.0,
-        "bertscore_precision": mean(all_bert_p) if all_bert_p else 0.0,
-        "bertscore_recall": mean(all_bert_r) if all_bert_r else 0.0,
-        "bertscore_f1": mean(all_bert_f1) if all_bert_f1 else 0.0,
-        "unanswerable_accuracy": mean(unanswerable_correct) if unanswerable_correct else 1.0,
-    }
+    span_metrics = summarize_span_metric_lists(span_metric_lists, unanswerable_correct)
     return chunk_metrics, span_metrics
 
 
@@ -252,59 +238,30 @@ def main():
                 bert_scorer,
             )
         except Exception:
-            chunk_metrics = {"hit_rate": 0.0, "mrr": 0.0, "recall@k": 0.0}
-            span_metrics = {
-                "precision": 0.0,
-                "recall": 0.0,
-                "f1": 0.0,
-                "rouge_l_precision": 0.0,
-                "rouge_l_recall": 0.0,
-                "rouge_l_f1": 0.0,
-                "bertscore_precision": 0.0,
-                "bertscore_recall": 0.0,
-                "bertscore_f1": 0.0,
-                "unanswerable_accuracy": 0.0,
-            }
+            chunk_metrics = zero_chunk_metrics()
+            span_metrics = zero_span_metrics()
 
-        results_table.append({
-            "Model": model,
-            "Hit Rate": chunk_metrics.get("hit_rate", 0),
-            "Recall@K": chunk_metrics.get("recall@k", 0),
-            "MRR": chunk_metrics.get("mrr", 0),
-            "Precision": span_metrics.get("precision", 0),
-            "Recall": span_metrics.get("recall", 0),
-            "F1": span_metrics.get("f1", 0),
-            "RougeF1": span_metrics.get("rouge_l_f1", 0),
-            "BertF1": span_metrics.get("bertscore_f1", 0),
-            "Unans.Acc": span_metrics.get("unanswerable_accuracy", 0),
-        })
-
-    report_lines = []
-    report_lines.append("\n\n" + "=" * 132)
-    report_lines.append(f"{'FINAL BENCHMARK RESULTS':^132}")
-    report_lines.append("=" * 132)
-    header = (
-        f"{'Model':<35} | {'Hit Rate':<8} | {'Recall@K':<8} | {'MRR':<6} | "
-        f"{'Precision':<9} | {'Recall':<6} | {'F1':<6} | "
-        f"{'RougeF1':<8} | {'BertF1':<8} | {'Unans.Acc':<9}"
-    )
-    report_lines.append(header)
-    report_lines.append("-" * 132)
-    for row in results_table:
-        line = (
-            f"{row['Model']:<35} | {row['Hit Rate']:.3f}    | {row['Recall@K']:.3f}    | {row['MRR']:.3f}  | "
-            f"{row['Precision']:.3f}     | {row['Recall']:.3f}  | {row['F1']:.3f}  | "
-            f"{row['RougeF1']:.3f}    | {row['BertF1']:.3f}    | {row['Unans.Acc']:.3f}"
+        results_table.append(
+            make_benchmark_result_row(
+                labels={"Model": model},
+                chunk_metrics=chunk_metrics,
+                span_metrics=span_metrics,
+            )
         )
-        report_lines.append(line)
-    report_lines.append("=" * 132)
-    print("\n".join(report_lines))
 
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    header, row_lines = build_benchmark_header_and_rows(
+        rows=results_table,
+        leading_columns=[("Model", 35)],
+    )
+    report_lines = build_table_report_lines(
+        title="FINAL BENCHMARK RESULTS",
+        width=132,
+        header=header,
+        row_lines=row_lines,
+        leading_blank_lines=2,
+    )
     output_path = RESULTS_DIR / "benchmark_results.txt"
-    with open(output_path, "w") as f:
-        f.write("\n".join(report_lines))
-    print(f"\nResults saved to: {output_path}")
+    print_and_write_report(report_lines, output_path)
 
 
 if __name__ == "__main__":

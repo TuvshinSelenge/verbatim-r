@@ -1,28 +1,20 @@
 import re
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Any, Dict, Set, Tuple, List
 
 from bert_score import BERTScorer
 from rouge_score import rouge_scorer
 from scipy.optimize import linear_sum_assignment
-
-
-@dataclass(frozen=True)
-class TokenPairMatchCandidate:
-    """
-    Candidate alignment between one predicted span and one gold span.
-    """
-    pair_f1: float
-    tp: int
-    pred_idx: int
-    gold_idx: int
-    fp: int
-    fn: int
+from .types import TokenPairMatchCandidate
 
 
 def _strip_markdown_tables(text: str) -> str:
+    """
+    Inputs: raw text that may contain markdown table rows.
+    Steps: remove separator rows, flatten table cells, normalize whitespace.
+    Output: plain text string with table artifacts removed.
+    """
     # Guard: empty input should stay empty.
     if not text:
         return ""
@@ -56,6 +48,11 @@ def _strip_markdown_tables(text: str) -> str:
 
 
 def normalize_extraction_text(text: str) -> str:
+    """
+    Inputs: extracted text from model output.
+    Steps: remove markdown styling, strip table formatting, collapse spaces.
+    Output: normalized extraction text for downstream metrics.
+    """
     # Guard: empty input should stay empty.
     if not text:
         return ""
@@ -71,6 +68,11 @@ def normalize_extraction_text(text: str) -> str:
 
 
 def normalize_answer(text: str) -> str:
+    """
+    Inputs: answer/span text.
+    Steps: normalize extraction text, lowercase, remove punctuation, collapse spaces.
+    Output: alphanumeric normalized text for token-level overlap matching.
+    """
     # 1) Normalize formatting artifacts.
     text = normalize_extraction_text(text).lower()
 
@@ -82,13 +84,20 @@ def normalize_answer(text: str) -> str:
 
 
 def normalize_ws(text: str) -> str:
+    """
+    Inputs: any text (including None/empty).
+    Steps: split and re-join on whitespace.
+    Output: whitespace-normalized text.
+    """
     # Minimal whitespace normalization helper used by ROUGE/BERTScore flows.
     return " ".join((text or "").split())
 
 
 def flatten_extracted_spans(spans_raw: dict) -> List[str]:
     """
-    Flatten extractor output dict -> list of non-empty strings.
+    Inputs: extractor output dictionary of span groups.
+    Steps: iterate groups, normalize whitespace, remove empty spans.
+    Output: flat list of cleaned span strings.
     """
     extracted: List[str] = []
 
@@ -113,6 +122,11 @@ def flatten_extracted_spans(spans_raw: dict) -> List[str]:
 
 
 def _token_overlap_counts(pred_text: str, gold_text: str) -> Tuple[int, int, int, float]:
+    """
+    Inputs: one predicted span text and one gold span text.
+    Steps: tokenize, compute multiset overlap, derive TP/FP/FN and pair F1.
+    Output: (tp, fp, fn, pair_f1) for this span pair.
+    """
     # Split each span into word tokens.
     pred_tokens = pred_text.split()
     gold_tokens = gold_text.split()
@@ -137,7 +151,9 @@ def _token_overlap_counts(pred_text: str, gold_text: str) -> Tuple[int, int, int
 
 def _normalize_and_filter_spans(spans: List[str], normalizer: Callable[[str], str]) -> List[str]:
     """
-    Apply a normalizer to each span and drop empty results.
+    Inputs: list of spans plus a normalization function.
+    Steps: apply normalizer per span and drop empty results.
+    Output: cleaned span list.
     """
     cleaned: List[str] = []
     for span in spans:
@@ -149,11 +165,9 @@ def _normalize_and_filter_spans(spans: List[str], normalizer: Callable[[str], st
 
 def _empty_case_prf(preds: List[str], golds: List[str]) -> Tuple[bool, float, float, float]:
     """
-    Handle common empty-input edge cases for set metrics.
-
-    Returns:
-    - handled: whether an edge case was applied
-    - precision, recall, f1: valid only when handled=True
+    Inputs: cleaned prediction and gold span lists.
+    Steps: check empty-empty and one-empty edge cases.
+    Output: (handled, precision, recall, f1) edge-case result.
     """
     # Nothing predicted and nothing expected: perfect score.
     if not preds and not golds:
@@ -169,7 +183,9 @@ def _empty_case_prf(preds: List[str], golds: List[str]) -> Tuple[bool, float, fl
 
 def _f1_from_precision_recall(precision: float, recall: float) -> float:
     """
-    Compute F1 from precision and recall.
+    Inputs: precision and recall scalars.
+    Steps: apply harmonic-mean formula with zero-denominator guard.
+    Output: F1 score.
     """
     return (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
 
@@ -180,7 +196,9 @@ def _prepare_span_sets(
     normalizer: Callable[[str], str],
 ) -> Tuple[List[str], List[str], bool, float, float, float]:
     """
-    Normalize spans on both sides and apply shared empty-input handling.
+    Inputs: raw predicted spans, raw gold spans, and a normalizer.
+    Steps: normalize both span lists and apply shared empty-case handling.
+    Output: (preds, golds, handled, precision, recall, f1).
     """
     preds = _normalize_and_filter_spans(predicted_spans, normalizer)
     golds = _normalize_and_filter_spans(gold_spans, normalizer)
@@ -194,21 +212,27 @@ def _build_pair_score_matrix(
     pair_score_fn: Callable[[str, str], float],
 ) -> List[List[float]]:
     """
-    Build a dense pairwise score matrix where rows=predictions and cols=golds.
+    Inputs: cleaned predictions/golds and a pair-scoring function.
+    Steps: score every (pred, gold) combination.
+    Output: dense matrix with rows=preds and cols=golds.
     """
     return [[pair_score_fn(pred, gold) for gold in golds] for pred in preds]
 
 
 def _normalize_for_bert(text: str) -> str:
     """
-    BERTScore normalization: extraction cleanup plus whitespace normalization.
+    Inputs: raw span text.
+    Steps: normalize extraction artifacts then normalize whitespace.
+    Output: text prepared for BERTScore comparison.
     """
     return normalize_ws(normalize_extraction_text(text))
 
 
 def _build_bertscore_f1_matrix(preds: List[str], golds: List[str], scorer: Any) -> List[List[float]]:
     """
-    Compute pairwise BERTScore F1 matrix for all (pred, gold) combinations.
+    Inputs: cleaned prediction/gold spans plus a BERTScore scorer.
+    Steps: batch-score all pairs, reconstruct P/R matrices, convert to F1 matrix.
+    Output: dense pairwise BERTScore F1 matrix.
     """
     # Build flat pair lists for one batched scorer call.
     pair_cands: List[str] = []
@@ -243,11 +267,9 @@ def compute_token_precision_recall_f1(
     gold_spans: List[str],
 ) -> Dict[str, float]:
     """
-    Token-level P/R/F1 with one-to-one greedy span alignment.
-
-    - spans are normalized before scoring
-    - per-pair scores are based on token overlap
-    - matching is one-to-one over span pairs
+    Inputs: predicted span list and gold span list.
+    Steps: normalize, handle empty cases, greedy one-to-one token overlap matching.
+    Output: dict with token-level precision/recall/f1.
     """
     # Step 1: normalize both span lists and apply shared empty-input handling.
     preds, golds, handled, precision, recall, f1 = _prepare_span_sets(
@@ -312,7 +334,9 @@ def compute_token_precision_recall_f1(
 
 def get_rouge_l_scorer() -> Any:
     """
-    Create a rouge-score ROUGE-L scorer instance
+    Inputs: none.
+    Steps: instantiate rouge-score scorer configured for ROUGE-L.
+    Output: reusable ROUGE-L scorer instance.
     """
     # use_stemmer=False keeps exact-token behavior (closer to your prior logic).
     return rouge_scorer.RougeScorer(["rougeL"], use_stemmer=False)
@@ -320,8 +344,9 @@ def get_rouge_l_scorer() -> Any:
 
 def _one_to_one_prf_from_pair_matrix(score_matrix: List[List[float]]) -> Tuple[float, float, float]:
     """
-    Strict one-to-one alignment over pair scores
-    used to maximize total pair score under one-to-one constraints
+    Inputs: pairwise similarity matrix (rows=preds, cols=golds).
+    Steps: solve optimal one-to-one assignment with Hungarian algorithm.
+    Output: set-level precision, recall, and F1.
     """
     # Matrix shape:
     # rows = predictions, columns = gold spans.
@@ -361,7 +386,9 @@ def _one_to_one_prf_from_pair_matrix(score_matrix: List[List[float]]) -> Tuple[f
 
 def rouge_l_pair_score(candidate: str, reference: str, scorer: Any) -> float:
     """
-    ROUGE-L F1 for one candidate-reference pair.
+    Inputs: one candidate span, one reference span, and ROUGE scorer.
+    Steps: normalize whitespace, handle edge cases, score with ROUGE-L.
+    Output: pairwise ROUGE-L F1.
     """
     # Step 1: normalize only whitespace (ROUGE-L keeps token sequence).
     cand = normalize_ws(candidate)
@@ -384,7 +411,9 @@ def compute_rouge_l_best_match_prf(
     gold_spans: List[str],
 ) -> Tuple[float, float, float]:
     """
-    Set-based best-match aggregation for ROUGE-L.
+    Inputs: predicted span list and gold span list.
+    Steps: normalize, handle empty cases, pairwise ROUGE-L, one-to-one assignment.
+    Output: set-level precision, recall, and F1.
     """
     # Step 1: normalize both span lists and apply shared empty-input handling.
     preds, golds, handled, precision, recall, f1 = _prepare_span_sets(
@@ -409,7 +438,9 @@ def compute_rouge_l_best_match_prf(
 
 def get_bertscore_scorer(lang: str = "en") -> Any:
     """
-    Create a BERTScore scorer instance.
+    Inputs: language code.
+    Steps: instantiate BERTScore scorer for the provided language.
+    Output: reusable BERTScore scorer instance.
     """
     return BERTScorer(lang=lang)
 
@@ -420,7 +451,9 @@ def compute_bertscore_best_match_prf(
     scorer: Any,
 ) -> Tuple[float, float, float]:
     """
-    Set-based best-match aggregation over pairwise BERTScore P/R/F1.
+    Inputs: predicted span list, gold span list, and BERTScore scorer.
+    Steps: normalize, handle empty cases, build pairwise BERT F1 matrix, assign one-to-one.
+    Output: set-level precision, recall, and F1.
     """
     # Step 1: normalize both span lists and apply shared empty-input handling.
     preds, golds, handled, precision, recall, f1 = _prepare_span_sets(

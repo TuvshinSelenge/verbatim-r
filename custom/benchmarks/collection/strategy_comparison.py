@@ -13,8 +13,12 @@ from statistics import mean
 from typing import List, Tuple, Dict
 
 from custom.setup import connect_to_index, QueryRewriter, QueryGenerator, BGEReranker
+from custom.pipeline.io import (
+    build_table_report_lines,
+    print_and_write_report,
+    run_with_timeout,
+)
 from custom.pipeline.retrieval import extract_preds, merge_and_dedup
-from custom.pipeline.runtime import run_with_timeout, is_rate_limit_error
 from openai import OpenAI
 
 SCRIPT_DIR = Path(__file__).parent
@@ -55,58 +59,20 @@ LLM_CALLS = {
 }
 
 
-def collect_hits_baseline(query_text: str, rag_index, reranker: BGEReranker) -> List[Tuple]:
-    # Strategy A: raw vector retrieval only.
-    hits = rag_index.query(query_text, k=TOP_K)
-    return extract_preds(hits)
+def is_rate_limit_error(exc: Exception) -> bool:
+    """Best-effort detection of provider/API rate-limit errors."""
+    status_code = getattr(exc, "status_code", None)
+    if status_code == 429:
+        return True
 
-
-def collect_hits_baseline_reranker(query_text: str, rag_index, reranker: BGEReranker) -> List[Tuple]:
-    # Strategy B: raw retrieval + reranker.
-    hits = rag_index.query(query_text, k=SEARCH_K)
-    reranked, _ = reranker.rerank(query_text, hits, top_k=TOP_K)
-    return extract_preds(reranked)
-
-
-def collect_hits_rewriting(
-    query_text: str,
-    query_rewriter: QueryRewriter,
-    rag_index,
-    reranker: BGEReranker,
-) -> List[Tuple]:
-    # Strategy C: rewrite query, then retrieve + rerank.
-    rewritten = query_rewriter.rewrite(query_text)
-    hits = rag_index.query(rewritten, k=SEARCH_K)
-    reranked, _ = reranker.rerank(rewritten, hits, top_k=TOP_K)
-    return extract_preds(reranked)
-
-
-def collect_hits_multiquery(
-    query_text: str,
-    rag_index,
-    reranker: BGEReranker,
-    query_generator: QueryGenerator,
-) -> List[Tuple]:
-    # Strategy D: multi-query generation, merge, rerank.
-    subqs = query_generator.generate_queries(query_text)
-    merged = merge_and_dedup(subqs, rag_index, PER_SUBQ_K)
-    reranked, _ = reranker.rerank(query_text, merged, top_k=TOP_K)
-    return extract_preds(reranked)
-
-
-def collect_hits_full_pipeline(
-    query_text: str,
-    query_rewriter: QueryRewriter,
-    rag_index,
-    reranker: BGEReranker,
-    query_generator: QueryGenerator,
-) -> List[Tuple]:
-    # Strategy E: rewrite + multi-query + rerank (full pipeline).
-    rewritten = query_rewriter.rewrite(query_text)
-    subqs = query_generator.generate_queries(rewritten)
-    merged = merge_and_dedup(subqs, rag_index, PER_SUBQ_K)
-    reranked, _ = reranker.rerank(rewritten, merged, top_k=TOP_K)
-    return extract_preds(reranked)
+    # Fallback: detect rate-limit phrases in error text.
+    text = str(exc).lower()
+    return (
+        " 429 " in f" {text} "
+        or "error code: 429" in text
+        or "rate limit" in text
+        or "rate-limited" in text
+    )
 
 
 def run_strategy_retrieval(
@@ -120,23 +86,28 @@ def run_strategy_retrieval(
     """
     Return (pred tuples, reranked chunks, rewritten query text).
     """
+    # Strategy A: plain vector search only.
     if strategy_name == "Baseline (Vector Only)":
         chunks = rag_index.query(query_text, k=TOP_K)
         return extract_preds(chunks), chunks, query_text
+    # Strategy B: vector search + reranker.
     if strategy_name == "Baseline + Reranker":
         hits = rag_index.query(query_text, k=SEARCH_K)
         chunks, _ = reranker.rerank(query_text, hits, top_k=TOP_K)
         return extract_preds(chunks), chunks, query_text
+    # Strategy C: rewrite query first, then search + rerank.
     if strategy_name == "Baseline + Rewriting + Reranker":
         rewritten = query_rewriter.rewrite(query_text)
         hits = rag_index.query(rewritten, k=SEARCH_K)
         chunks, _ = reranker.rerank(rewritten, hits, top_k=TOP_K)
         return extract_preds(chunks), chunks, rewritten
+    # Strategy D: generate multiple sub-queries, merge hits, then rerank.
     if strategy_name == "Baseline + Multi-Query + Reranker":
         subqs = query_generator.generate_queries(query_text)
         merged = merge_and_dedup(subqs, rag_index, PER_SUBQ_K)
         chunks, _ = reranker.rerank(query_text, merged, top_k=TOP_K)
         return extract_preds(chunks), chunks, query_text
+    # Strategy E: rewrite + multi-query + rerank (full pipeline).
     if strategy_name == "Baseline + Rewriting + Multi-Query + Reranker":
         rewritten = query_rewriter.rewrite(query_text)
         subqs = query_generator.generate_queries(rewritten)
@@ -160,10 +131,12 @@ def evaluate_strategy(
     skipped = 0
 
     for i, item in enumerate(gold_data, 1):
+        # Read query and normalize gold index shape.
         query = item["query"]
         expected_idxs = item["expected_chunk_index"]
         if not isinstance(expected_idxs, list):
             expected_idxs = [expected_idxs]
+        # Skip sentinel-only rows that are not real retrieval targets.
         if SKIP_SENTINEL_1300 and all(idx == 1300 for idx in expected_idxs):
             skipped += 1
             print(f"[{strategy_name}] [{i}/{total_queries}] skipped (sentinel 1300): {query[:80]}")
@@ -174,6 +147,7 @@ def evaluate_strategy(
 
         preds = None
         last_error = None
+        # Retry only on rate-limit errors with exponential backoff.
         for attempt in range(MAX_429_RETRIES + 1):
             try:
                 preds, _, _ = run_with_timeout(
@@ -193,12 +167,14 @@ def evaluate_strategy(
                     continue
                 break
 
+        # If retrieval still failed, count this query as zero score.
         if last_error is not None:
             print(f"  ERROR: {last_error}")
             per_query.append({"hit@k": 0, "rr": 0.0, "recall@k": 0.0})
             time.sleep(2)
             continue
 
+        # Compute retrieval metrics for this query.
         hit = any(idx in gold_idxs for _, idx in preds)
         rank = None
         for r, (_, idx) in enumerate(preds, 1):
@@ -211,6 +187,7 @@ def evaluate_strategy(
         per_query.append({"hit@k": 1 if hit else 0, "rr": rr, "recall@k": recall_at_k})
         time.sleep(1)
 
+    # Aggregate per-query metrics into final strategy scores.
     if per_query:
         hit_rate = mean([r["hit@k"] for r in per_query])
         mrr = mean([r["rr"] for r in per_query])
@@ -231,6 +208,7 @@ def evaluate_strategy(
 
 
 def run_strategy_suite(selected_strategies: List[str], title: str, output_filename: str) -> List[Dict]:
+    # Print run heading for readability in terminal logs.
     print("=" * 70)
     print(title)
     print("=" * 70)
@@ -247,7 +225,7 @@ def run_strategy_suite(selected_strategies: List[str], title: str, output_filena
         sys.exit(1)
     gold_data = json.loads(retrieval_data_path.read_text())
 
-    # Shared backend components.
+    # Initialize shared backend components once for fair comparison.
     rag_index, _ = connect_to_index(db_path=DB_PATH, verbose=False)
     reranker = BGEReranker()
     openai_client = OpenAI(base_url=OPENROUTER_BASE_URL, api_key=OPENROUTER_API_KEY, timeout=120.0)
@@ -266,7 +244,7 @@ def run_strategy_suite(selected_strategies: List[str], title: str, output_filena
     }
 
     all_results = []
-    # Run selected strategies with identical data/config for fair comparison.
+    # Evaluate each selected strategy under the same setup.
     for name in selected_strategies:
         kwargs = strategy_kwargs.get(name)
         if kwargs is None:
@@ -281,37 +259,25 @@ def run_strategy_suite(selected_strategies: List[str], title: str, output_filena
             )
         )
 
-    print("\n\n" + "=" * 132)
-    print(f"{'FINAL COMPARISON RESULTS':^132}")
-    print("=" * 132)
-    print(
-        f"{'Strategy':<30} | {'Hit Rate':<8} | {'Recall@K':<8} | {'MRR':<6} | {'LLM Calls':<10}"
-    )
-    print("-" * 132)
+    # Build final table rows for console + output file.
+    header = f"{'Strategy':<30} | {'Hit Rate':<8} | {'Recall@K':<8} | {'MRR':<6} | {'LLM Calls':<10}"
+    row_lines = []
     for r in all_results:
-        print(
+        row_lines.append(
             f"{r['strategy']:<30} | {r['hit_rate']:.3f}    | {r['recall@k']:.3f}    | {r['mrr']:.3f}  | "
             f"{LLM_CALLS.get(r['strategy'], '?')}"
         )
-    print("=" * 132)
-
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    # Reuse shared report helpers for consistent formatting/writing.
+    report_lines = build_table_report_lines(
+        title="FINAL COMPARISON RESULTS",
+        width=132,
+        header=header,
+        row_lines=row_lines,
+        leading_blank_lines=2,
+    )
     output_path = RESULTS_DIR / output_filename
-    with open(output_path, "w") as f:
-        f.write(f"{title}\n")
-        f.write("=" * 132 + "\n")
-        f.write(
-            f"{'Strategy':<30} | {'Hit Rate':<8} | {'Recall@K':<8} | {'MRR':<6} | {'LLM Calls':<10}\n"
-        )
-        f.write("-" * 132 + "\n")
-        for r in all_results:
-            f.write(
-                f"{r['strategy']:<30} | {r['hit_rate']:.3f}    | {r['recall@k']:.3f}    | {r['mrr']:.3f}  | "
-                f"{LLM_CALLS.get(r['strategy'], '?')}\n"
-            )
-        f.write("=" * 132 + "\n")
-
-    print(f"\nResults saved to: {output_path}")
+    report_with_prefix = [title] + report_lines
+    print_and_write_report(report_with_prefix, output_path)
     return all_results
 
 
