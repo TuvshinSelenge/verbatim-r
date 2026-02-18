@@ -42,6 +42,7 @@ RERANKERS_TO_TEST = [
     "cross-encoder/ms-marco-MiniLM-L-6-v2",
     "cross-encoder/ms-marco-MiniLM-L-12-v2",
     "BAAI/bge-reranker-v2-m3",
+    "BAAI/bge-reranker-base"
 ]
 
 
