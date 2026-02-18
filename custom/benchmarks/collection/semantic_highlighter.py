@@ -14,8 +14,13 @@ from openai import OpenAI
 from dotenv import load_dotenv
 
 from custom.setup import connect_to_index, BGEReranker, QueryRewriter, QueryGenerator
+from custom.pipeline.metrics import (
+    compute_bertscore_best_match_prf,
+    compute_rouge_l_best_match_prf,
+    compute_token_precision_recall_f1,
+    get_bertscore_scorer,
+)
 from custom.pipeline.retrieval import retrieve_and_rerank as shared_retrieve_and_rerank
-from custom.pipeline.metrics import compute_exact_match, token_metrics
 from custom.pipeline.runtime import run_with_timeout
 from custom.pipeline.types import SearchResultWrapper
 
@@ -40,6 +45,8 @@ RETRIEVAL_MODELS = ["google/gemini-3-flash-preview"]
 TOP_K = 5
 PER_SUBQ_K = 20
 QUERY_TIMEOUT = 120
+SKIP_SENTINEL_1300 = True
+MAX_EXTRACTED_SPANS = 5
 
 # Threshold 0.3: Keeps sentences with >30% probability score.
 # Threshold Default: Keeps sentences with >50% probability score.
@@ -61,63 +68,26 @@ def wrap_chunks(chunks: list) -> List[SearchResultWrapper]:
     return wrapped
 
 
-def evaluate_span_extraction(extracted_spans: List[str], gold_spans: List[str]) -> Dict[str, float]:
-    is_unanswerable = len(gold_spans) == 0
-    if is_unanswerable:
-        abstained = len(extracted_spans) == 0
-        return {
-            "exact_match": 1.0 if abstained else 0.0,
-            "precision": 1.0 if abstained else 0.0,
-            "recall": 1.0 if abstained else 0.0,
-            "f1": 1.0 if abstained else 0.0,
-            "is_unanswerable": True,
-            "correctly_abstained": abstained,
-        }
-    if not extracted_spans:
-        return {"exact_match": 0.0, "precision": 0.0, "recall": 0.0, "f1": 0.0, "is_unanswerable": False, "correctly_abstained": False}
-    for pred in extracted_spans:
-        for gold in gold_spans:
-            if compute_exact_match(pred, gold):
-                return {
-                    "exact_match": 1.0, "precision": 1.0, "recall": 1.0, "f1": 1.0,
-                    "is_unanswerable": False, "correctly_abstained": False,
-                    "matched_pred": pred, "matched_gold": gold, "match_type": "EM",
-                }
-    best_precision = 0.0
-    best_recall = 0.0
-    best_f1 = 0.0
-    best_pred = ""
-    best_gold = ""
-    for pred in extracted_spans:
-        for gold in gold_spans:
-            p, r, f1 = token_metrics(pred, gold)
-            if f1 > best_f1:
-                best_precision = p
-                best_recall = r
-                best_f1 = f1
-                best_pred = pred
-                best_gold = gold
-    return {
-        "exact_match": 0.0, "precision": best_precision, "recall": best_recall, "f1": best_f1,
-        "is_unanswerable": False, "correctly_abstained": False, "matched_pred": best_pred, "matched_gold": best_gold, "match_type": "F1",
-    }
-
-
 def run_zilliz_extraction_evaluation(
     gold_data: List[Dict],
+    retrieval_gold_map: Dict[str, List[int]],
     rag_index,
     reranker: BGEReranker,
     query_rewriter: QueryRewriter,
     query_generator: QueryGenerator,
     zilliz_extractor: SemanticHighlightExtractor,
-    retrieval_cache: Optional[Dict[str, Tuple[list, str]]] = None,
+    bert_scorer,
+    retrieval_cache: Optional[Dict[str, Tuple[list, str, List[Tuple]]]] = None,
 ) -> Tuple[Dict, List[Dict]]:
     # Cache stores retrieval output per query:
     #   query -> (reranked_chunks, rewritten_query)
     # This lets us run extraction repeatedly with different extractor settings
     # without paying retrieval cost again.
     retrieval_cache = retrieval_cache or {}
-    all_em, all_precision, all_recall, all_f1, unanswerable_correct = [], [], [], [], []
+    all_hit, all_rr, all_recall_k = [], [], []
+    all_precision, all_recall, all_f1 = [], [], []
+    all_rouge_f1, all_bert_f1 = [], []
+    unanswerable_correct = []
     per_query_details = []
     total_queries = len(gold_data)
 
@@ -134,15 +104,35 @@ def run_zilliz_extraction_evaluation(
             # Step 1: Retrieve chunks once (or reuse from cache).
             cached = retrieval_cache.get(query)
             if cached:
-                reranked, rewritten = cached
+                reranked, rewritten, preds = cached
             else:
-                reranked, rewritten, _ = run_with_timeout(
+                reranked, rewritten, preds = run_with_timeout(
                     lambda q=query: shared_retrieve_and_rerank(
                         q, query_rewriter, query_generator, rag_index, reranker, top_k=TOP_K, per_subq_k=PER_SUBQ_K
                     ),
                     timeout_sec=QUERY_TIMEOUT,
                 )
-                retrieval_cache[query] = (reranked, rewritten)
+                retrieval_cache[query] = (reranked, rewritten, preds)
+
+            # Step 1b: Retrieval metrics against qa_with_chunk_ids gold indices.
+            expected_idxs = retrieval_gold_map.get(query, [])
+            if expected_idxs:
+                gold_idxs = set(expected_idxs)
+                hit = any(idx in gold_idxs for _, idx in preds)
+                rank = None
+                for r, (_, idx) in enumerate(preds, 1):
+                    if idx in gold_idxs:
+                        rank = r
+                        break
+                rr = 1.0 / rank if rank else 0.0
+                retrieved_idxs = {idx for _, idx in preds}
+                recall_at_k = len(gold_idxs & retrieved_idxs) / len(gold_idxs) if gold_idxs else 0.0
+                all_hit.append(1 if hit else 0)
+                all_rr.append(rr)
+                all_recall_k.append(recall_at_k)
+                detail["retrieval"] = {"hit@k": 1 if hit else 0, "rr": rr, "recall@k": recall_at_k}
+            else:
+                detail["retrieval"] = {"hit@k": None, "rr": None, "recall@k": None}
 
             # Step 2: Convert retrieval results to extractor input shape.
             wrapped_chunks = wrap_chunks(reranked)
@@ -157,29 +147,58 @@ def run_zilliz_extraction_evaluation(
                         for s in span_list:
                             if s and s.strip():
                                 spans.append(s.strip())
-                    return spans
+                    return spans[:MAX_EXTRACTED_SPANS]
                 extracted_spans = run_with_timeout(do_extract, timeout_sec=QUERY_TIMEOUT)
 
-            # Step 4: Score extracted spans against gold spans.
-            metrics = evaluate_span_extraction(extracted_spans, gold_spans)
-            all_em.append(metrics["exact_match"])
-            all_precision.append(metrics["precision"])
-            all_recall.append(metrics["recall"])
-            all_f1.append(metrics["f1"])
+            # Step 4: Score extracted spans against gold spans (token + rouge + bert).
             detail["extracted_spans"] = extracted_spans
-            detail["metrics"] = metrics
-            if is_unanswerable:
-                unanswerable_correct.append(1 if metrics["correctly_abstained"] else 0)
+            if not is_unanswerable:
+                token_metrics = compute_token_precision_recall_f1(extracted_spans, gold_spans)
+                _, _, rouge_f1 = compute_rouge_l_best_match_prf(extracted_spans, gold_spans)
+                _, _, bert_f1 = compute_bertscore_best_match_prf(
+                    extracted_spans, gold_spans, scorer=bert_scorer
+                )
+                all_precision.append(token_metrics["precision"])
+                all_recall.append(token_metrics["recall"])
+                all_f1.append(token_metrics["f1"])
+                all_rouge_f1.append(rouge_f1)
+                all_bert_f1.append(bert_f1)
+                detail["metrics"] = {
+                    "precision": token_metrics["precision"],
+                    "recall": token_metrics["recall"],
+                    "f1": token_metrics["f1"],
+                    "rouge_l_f1": rouge_f1,
+                    "bertscore_f1": bert_f1,
+                }
+            else:
+                abstained = len(extracted_spans) == 0
+                unanswerable_correct.append(1 if abstained else 0)
+                detail["metrics"] = {
+                    "precision": None,
+                    "recall": None,
+                    "f1": None,
+                    "rouge_l_f1": None,
+                    "bertscore_f1": None,
+                }
+                detail["correctly_abstained"] = abstained
         except Exception as e:
             print("  error during extraction eval, counting as 0")
             detail["extracted_spans"] = []
-            detail["metrics"] = {"exact_match": 0, "precision": 0, "recall": 0, "f1": 0}
+            detail["metrics"] = {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0,
+                "rouge_l_f1": 0.0,
+                "bertscore_f1": 0.0,
+            }
             detail["status"] = "ERROR"
             detail["error"] = str(e)
-            all_em.append(0.0)
-            all_precision.append(0.0)
-            all_recall.append(0.0)
-            all_f1.append(0.0)
+            if not is_unanswerable:
+                all_precision.append(0.0)
+                all_recall.append(0.0)
+                all_f1.append(0.0)
+                all_rouge_f1.append(0.0)
+                all_bert_f1.append(0.0)
             if is_unanswerable:
                 unanswerable_correct.append(0)
             time.sleep(2)
@@ -187,10 +206,14 @@ def run_zilliz_extraction_evaluation(
         time.sleep(1)
 
     aggregate = {
-        "exact_match": mean(all_em) if all_em else 0.0,
+        "hit_rate": mean(all_hit) if all_hit else 0.0,
+        "recall@k": mean(all_recall_k) if all_recall_k else 0.0,
+        "mrr": mean(all_rr) if all_rr else 0.0,
         "precision": mean(all_precision) if all_precision else 0.0,
         "recall": mean(all_recall) if all_recall else 0.0,
         "f1": mean(all_f1) if all_f1 else 0.0,
+        "rouge_l_f1": mean(all_rouge_f1) if all_rouge_f1 else 0.0,
+        "bertscore_f1": mean(all_bert_f1) if all_bert_f1 else 0.0,
         "unanswerable_accuracy": mean(unanswerable_correct) if unanswerable_correct else 1.0,
     }
     return aggregate, per_query_details
@@ -204,19 +227,32 @@ def main():
     os.environ["OPENAI_API_KEY"] = OPENROUTER_API_KEY
     os.environ["OPENAI_BASE_URL"] = OPENROUTER_BASE_URL
     span_data_path = DATA_DIR / "span.json"
-    if not span_data_path.exists():
-        print(f"ERROR: Span data not found at {span_data_path}")
+    retrieval_data_path = DATA_DIR / "qa_with_chunk_ids.json"
+    if not span_data_path.exists() or not retrieval_data_path.exists():
+        print(f"ERROR: Span or retrieval data not found at {span_data_path} / {retrieval_data_path}")
         sys.exit(1)
     span_data = json.loads(span_data_path.read_text())
+    retrieval_data = json.loads(retrieval_data_path.read_text())
+
+    retrieval_gold_map: Dict[str, List[int]] = {}
+    for item in retrieval_data:
+        query = item["query"]
+        expected_idxs = item.get("expected_chunk_index", [])
+        if not isinstance(expected_idxs, list):
+            expected_idxs = [expected_idxs]
+        if SKIP_SENTINEL_1300 and all(idx == 1300 for idx in expected_idxs):
+            continue
+        retrieval_gold_map[query] = expected_idxs
 
     # Shared retrieval infrastructure (used by all models/configs).
     rag_index, _ = connect_to_index(db_path=DB_PATH, verbose=False)
     reranker = BGEReranker()
+    bert_scorer = get_bertscore_scorer(lang="en")
     results_table = []
 
     # Retrieval is independent from Zilliz thresholds/output mode.
     # Keep one retrieval cache per retrieval model and reuse across configs.
-    retrieval_cache_by_model: Dict[str, Dict[str, Tuple[list, str]]] = {}
+    retrieval_cache_by_model: Dict[str, Dict[str, Tuple[list, str, List[Tuple]]]] = {}
 
     for zilliz_config in ZILLIZ_CONFIGS:
         print(f"\n=== Extractor config: {zilliz_config['name']} ===")
@@ -233,34 +269,60 @@ def main():
             query_generator = QueryGenerator(client=client, model=retrieval_model)
             try:
                 span_metrics, query_details = run_zilliz_extraction_evaluation(
-                    span_data, rag_index, reranker, query_rewriter, query_generator, zilliz_extractor, retrieval_cache
+                    span_data,
+                    retrieval_gold_map,
+                    rag_index,
+                    reranker,
+                    query_rewriter,
+                    query_generator,
+                    zilliz_extractor,
+                    bert_scorer,
+                    retrieval_cache,
                 )
             except Exception:
-                span_metrics = {"exact_match": 0.0, "precision": 0.0, "recall": 0.0, "f1": 0.0, "unanswerable_accuracy": 0.0}
+                span_metrics = {
+                    "hit_rate": 0.0,
+                    "recall@k": 0.0,
+                    "mrr": 0.0,
+                    "f1": 0.0,
+                    "rouge_l_f1": 0.0,
+                    "bertscore_f1": 0.0,
+                    "unanswerable_accuracy": 0.0,
+                }
                 query_details = []
             results_table.append({
                 "Extractor": zilliz_config["name"],
                 "Retrieval": retrieval_model.split("/")[-1],
-                "EM": span_metrics.get("exact_match", 0),
-                "Prec": span_metrics.get("precision", 0),
-                "Rec": span_metrics.get("recall", 0),
+                "Hit Rate": span_metrics.get("hit_rate", 0),
+                "Recall@K": span_metrics.get("recall@k", 0),
+                "MRR": span_metrics.get("mrr", 0),
+                "Precision": span_metrics.get("precision", 0),
+                "Recall": span_metrics.get("recall", 0),
                 "F1": span_metrics.get("f1", 0),
+                "RougeF1": span_metrics.get("rouge_l_f1", 0),
+                "BertF1": span_metrics.get("bertscore_f1", 0),
                 "Unans.Acc": span_metrics.get("unanswerable_accuracy", 0),
                 "details": query_details,
             })
 
     report_lines = []
-    report_lines.append("=" * 100)
-    report_lines.append(f"{'ZILLIZ EXTRACTOR BENCHMARK RESULTS':^100}")
-    report_lines.append("=" * 100)
-    header = f"{'Extractor':<25} | {'Retrieval':<25} | {'EM':<6} | {'Prec':<6} | {'Rec':<6} | {'F1':<6} | {'Unans.Acc':<9}"
+    report_lines.append("=" * 140)
+    report_lines.append(f"{'ZILLIZ EXTRACTOR BENCHMARK RESULTS':^140}")
+    report_lines.append("=" * 140)
+    header = (
+        f"{'Extractor':<20} | {'Retrieval':<22} | {'Hit Rate':<8} | {'Recall@K':<8} | {'MRR':<6} | "
+        f"{'Precision':<9} | {'Recall':<6} | {'F1':<6} | "
+        f"{'RougeF1':<8} | {'BertF1':<8} | {'Unans.Acc':<9}"
+    )
     report_lines.append(header)
-    report_lines.append("-" * 100)
+    report_lines.append("-" * 140)
     for row in results_table:
         report_lines.append(
-            f"{row['Extractor']:<25} | {row['Retrieval']:<25} | {row['EM']:.3f}  | {row['Prec']:.3f}  | {row['Rec']:.3f}  | {row['F1']:.3f}  | {row['Unans.Acc']:.3f}"
+            f"{row['Extractor']:<20} | {row['Retrieval']:<22} | {row['Hit Rate']:.3f}    | {row['Recall@K']:.3f}    | {row['MRR']:.3f}  | "
+            f"{row['Precision']:.3f}     | {row['Recall']:.3f}  | {row['F1']:.3f}  | "
+            f"{row['RougeF1']:.3f}    | {row['BertF1']:.3f}    | {row['Unans.Acc']:.3f}"
         )
-    report_lines.append("=" * 100)
+    report_lines.append("=" * 140)
     print("\n".join(report_lines))
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)

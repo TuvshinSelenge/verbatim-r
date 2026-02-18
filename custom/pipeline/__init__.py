@@ -7,10 +7,11 @@ from .retrieval import (
     retrieve_and_rerank,
 )
 from .metrics import (
-    compute_exact_match,
-    evaluate_span_extraction,
+    compute_bertscore_best_match_prf,
+    compute_rouge_l_best_match_prf,
+    flatten_extracted_spans,
+    get_bertscore_scorer,
     normalize_answer,
     normalize_extraction_text,
-    token_metrics,
 )
 from .runtime import is_rate_limit_error, run_with_timeout

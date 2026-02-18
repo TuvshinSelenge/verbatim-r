@@ -17,7 +17,8 @@
       "query": "Are you a branch of an entity incorporated in another country?",
       "top_spans": [
         "| Domicile of entity | Austria |",
-        "| Country of incorporation | Austria |"
+        "| Country of incorporation | Austria |",
+        "Raiffeisen Bank International AG (RBI AG) is registered in the commercial register of the Commercial Court of Vienna under FN 122119m. Its address is Am Stadtpark 9, 1030 Vienna."
       ]
     },
     {

@@ -109,6 +109,43 @@ def collect_hits_full_pipeline(
     return extract_preds(reranked)
 
 
+def run_strategy_retrieval(
+    strategy_name: str,
+    query_text: str,
+    rag_index,
+    reranker: BGEReranker,
+    query_rewriter: QueryRewriter = None,
+    query_generator: QueryGenerator = None,
+) -> Tuple[List[Tuple], list, str]:
+    """
+    Return (pred tuples, reranked chunks, rewritten query text).
+    """
+    if strategy_name == "Baseline (Vector Only)":
+        chunks = rag_index.query(query_text, k=TOP_K)
+        return extract_preds(chunks), chunks, query_text
+    if strategy_name == "Baseline + Reranker":
+        hits = rag_index.query(query_text, k=SEARCH_K)
+        chunks, _ = reranker.rerank(query_text, hits, top_k=TOP_K)
+        return extract_preds(chunks), chunks, query_text
+    if strategy_name == "Baseline + Rewriting + Reranker":
+        rewritten = query_rewriter.rewrite(query_text)
+        hits = rag_index.query(rewritten, k=SEARCH_K)
+        chunks, _ = reranker.rerank(rewritten, hits, top_k=TOP_K)
+        return extract_preds(chunks), chunks, rewritten
+    if strategy_name == "Baseline + Multi-Query + Reranker":
+        subqs = query_generator.generate_queries(query_text)
+        merged = merge_and_dedup(subqs, rag_index, PER_SUBQ_K)
+        chunks, _ = reranker.rerank(query_text, merged, top_k=TOP_K)
+        return extract_preds(chunks), chunks, query_text
+    if strategy_name == "Baseline + Rewriting + Multi-Query + Reranker":
+        rewritten = query_rewriter.rewrite(query_text)
+        subqs = query_generator.generate_queries(rewritten)
+        merged = merge_and_dedup(subqs, rag_index, PER_SUBQ_K)
+        chunks, _ = reranker.rerank(rewritten, merged, top_k=TOP_K)
+        return extract_preds(chunks), chunks, rewritten
+    raise ValueError(f"Unknown strategy: {strategy_name}")
+
+
 def evaluate_strategy(
     strategy_name: str,
     gold_data: List[Dict],
@@ -139,33 +176,12 @@ def evaluate_strategy(
         last_error = None
         for attempt in range(MAX_429_RETRIES + 1):
             try:
-                if strategy_name == "Baseline (Vector Only)":
-                    preds = run_with_timeout(
-                        lambda q=query: collect_hits_baseline(q, rag_index, reranker),
-                        timeout_sec=QUERY_TIMEOUT,
-                    )
-                elif strategy_name == "Baseline + Reranker":
-                    preds = run_with_timeout(
-                        lambda q=query: collect_hits_baseline_reranker(q, rag_index, reranker),
-                        timeout_sec=QUERY_TIMEOUT,
-                    )
-                elif strategy_name == "Baseline + Rewriting + Reranker":
-                    preds = run_with_timeout(
-                        lambda q=query: collect_hits_rewriting(q, query_rewriter, rag_index, reranker),
-                        timeout_sec=QUERY_TIMEOUT,
-                    )
-                elif strategy_name == "Baseline + Multi-Query + Reranker":
-                    preds = run_with_timeout(
-                        lambda q=query: collect_hits_multiquery(q, rag_index, reranker, query_generator),
-                        timeout_sec=QUERY_TIMEOUT,
-                    )
-                elif strategy_name == "Baseline + Rewriting + Multi-Query + Reranker":
-                    preds = run_with_timeout(
-                        lambda q=query: collect_hits_full_pipeline(q, query_rewriter, rag_index, reranker, query_generator),
-                        timeout_sec=QUERY_TIMEOUT,
-                    )
-                else:
-                    raise ValueError(f"Unknown strategy: {strategy_name}")
+                preds, _, _ = run_with_timeout(
+                    lambda q=query: run_strategy_retrieval(
+                        strategy_name, q, rag_index, reranker, query_rewriter, query_generator
+                    ),
+                    timeout_sec=QUERY_TIMEOUT,
+                )
                 last_error = None
                 break
             except Exception as e:
@@ -225,11 +241,11 @@ def run_strategy_suite(selected_strategies: List[str], title: str, output_filena
         print("ERROR: OPENROUTER_API_KEY is not set.")
         sys.exit(1)
 
-    data_path = DATA_DIR / "qa_with_chunk_ids.json"
-    if not data_path.exists():
-        print(f"ERROR: Evaluation data not found at {data_path}")
+    retrieval_data_path = DATA_DIR / "qa_with_chunk_ids.json"
+    if not retrieval_data_path.exists():
+        print(f"ERROR: Evaluation data missing at {retrieval_data_path}")
         sys.exit(1)
-    gold_data = json.loads(data_path.read_text())
+    gold_data = json.loads(retrieval_data_path.read_text())
 
     # Shared backend components.
     rag_index, _ = connect_to_index(db_path=DB_PATH, verbose=False)
@@ -255,33 +271,45 @@ def run_strategy_suite(selected_strategies: List[str], title: str, output_filena
         kwargs = strategy_kwargs.get(name)
         if kwargs is None:
             raise ValueError(f"Unknown strategy in selected_strategies: {name}")
-        all_results.append(evaluate_strategy(name, gold_data, rag_index, reranker, **kwargs))
+        all_results.append(
+            evaluate_strategy(
+                name,
+                gold_data,
+                rag_index,
+                reranker,
+                **kwargs,
+            )
+        )
 
-    print("\n\n" + "=" * 85)
-    print(f"{'FINAL COMPARISON RESULTS':^85}")
-    print("=" * 85)
-    print(f"{'Strategy':<30} | {'Hit Rate':<10} | {'Recall@K':<10} | {'MRR':<10} | {'LLM Calls':<10}")
-    print("-" * 85)
+    print("\n\n" + "=" * 132)
+    print(f"{'FINAL COMPARISON RESULTS':^132}")
+    print("=" * 132)
+    print(
+        f"{'Strategy':<30} | {'Hit Rate':<8} | {'Recall@K':<8} | {'MRR':<6} | {'LLM Calls':<10}"
+    )
+    print("-" * 132)
     for r in all_results:
         print(
-            f"{r['strategy']:<30} | {r['hit_rate']:.3f}      | {r['recall@k']:.3f}      | {r['mrr']:.3f}      | "
+            f"{r['strategy']:<30} | {r['hit_rate']:.3f}    | {r['recall@k']:.3f}    | {r['mrr']:.3f}  | "
             f"{LLM_CALLS.get(r['strategy'], '?')}"
         )
-    print("=" * 85)
+    print("=" * 132)
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     output_path = RESULTS_DIR / output_filename
     with open(output_path, "w") as f:
         f.write(f"{title}\n")
-        f.write("=" * 85 + "\n")
-        f.write(f"{'Strategy':<30} | {'Hit Rate':<10} | {'Recall@K':<10} | {'MRR':<10} | {'LLM Calls':<10}\n")
-        f.write("-" * 85 + "\n")
+        f.write("=" * 132 + "\n")
+        f.write(
+            f"{'Strategy':<30} | {'Hit Rate':<8} | {'Recall@K':<8} | {'MRR':<6} | {'LLM Calls':<10}\n"
+        )
+        f.write("-" * 132 + "\n")
         for r in all_results:
             f.write(
-                f"{r['strategy']:<30} | {r['hit_rate']:.3f}      | {r['recall@k']:.3f}      | {r['mrr']:.3f}      | "
+                f"{r['strategy']:<30} | {r['hit_rate']:.3f}    | {r['recall@k']:.3f}    | {r['mrr']:.3f}  | "
                 f"{LLM_CALLS.get(r['strategy'], '?')}\n"
             )
-        f.write("=" * 85 + "\n")
+        f.write("=" * 132 + "\n")
 
     print(f"\nResults saved to: {output_path}")
     return all_results

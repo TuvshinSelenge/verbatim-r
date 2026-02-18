@@ -18,7 +18,13 @@ from dotenv import load_dotenv
 
 from custom.setup import connect_to_index, BGEReranker, QueryRewriter, QueryGenerator
 from custom.pipeline.retrieval import retrieve_and_rerank
-from custom.pipeline.metrics import evaluate_span_extraction
+from custom.pipeline.metrics import (
+    compute_bertscore_best_match_prf,
+    compute_rouge_l_best_match_prf,
+    compute_token_precision_recall_f1,
+    flatten_extracted_spans,
+    get_bertscore_scorer,
+)
 from custom.pipeline.runtime import run_with_timeout
 from verbatim_rag.core import VerbatimRAG
 from verbatim_rag.llm_client import LLMClient
@@ -35,18 +41,14 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 MODELS_TO_TEST = [
-    "google/gemini-3-flash-preview",
-    "google/gemini-2.5-flash-lite", 
-    "moonshotai/kimi-k2-0905",
-    "meta-llama/llama-4-scout",
-    "openai/gpt-5.1",
-    "openai/gpt-4.1-mini"
+    "openai/gpt-5.1"
 ]
 
 TOP_K = 5
 PER_SUBQ_K = 20
 SKIP_SENTINEL_1300 = True
 QUERY_TIMEOUT = 120
+MAX_EXTRACTED_SPANS = 5
 
 
 def run_unified_evaluation(
@@ -57,6 +59,7 @@ def run_unified_evaluation(
     query_rewriter: QueryRewriter,
     query_generator: QueryGenerator,
     rag: VerbatimRAG,
+    bert_scorer,
 ) -> Tuple[Dict[str, float], Dict[str, float]]:
     # Phase 1: retrieval metrics, while caching retrieved chunks for reuse.
     retrieval_results = []
@@ -112,7 +115,9 @@ def run_unified_evaluation(
     chunk_metrics = {"hit_rate": hit_rate, "mrr": mrr, "recall@k": recall_at_k}
 
     # Phase 2: extraction metrics. Reuse cached chunks when possible.
-    all_em, all_precision, all_recall, all_f1 = [], [], [], []
+    all_precision, all_recall, all_f1 = [], [], []
+    all_rouge_p, all_rouge_r, all_rouge_f1 = [], [], []
+    all_bert_p, all_bert_r, all_bert_f1 = [], [], []
     unanswerable_correct = []
     total_span_queries = len(span_data)
     for i, item in enumerate(span_data, 1):
@@ -138,37 +143,55 @@ def run_unified_evaluation(
             def do_extract(c=chunks, r=rewritten):
                 # Collect non-empty spans returned by the extractor.
                 spans_raw = rag.extractor.extract_spans(r, c)
-                extracted = []
-                if isinstance(spans_raw, dict):
-                    for _, span_list in spans_raw.items():
-                        if isinstance(span_list, list):
-                            for span in span_list:
-                                if span and span.strip():
-                                    extracted.append(span.strip())
-                return extracted
+                return flatten_extracted_spans(spans_raw)[:MAX_EXTRACTED_SPANS]
 
             extracted_spans = run_with_timeout(do_extract, timeout_sec=QUERY_TIMEOUT)
-            metrics = evaluate_span_extraction(extracted_spans, gold_spans)
-            all_em.append(metrics["exact_match"])
-            all_precision.append(metrics["precision"])
-            all_recall.append(metrics["recall"])
-            all_f1.append(metrics["f1"])
+            # Token-level P/R/F1 with one-to-one span alignment.
+            token_metrics = compute_token_precision_recall_f1(extracted_spans, gold_spans)
+            all_precision.append(token_metrics["precision"])
+            all_recall.append(token_metrics["recall"])
+            all_f1.append(token_metrics["f1"])
+
+            # ROUGE-L best-match aggregation.
+            r_p, r_r, r_f1 = compute_rouge_l_best_match_prf(extracted_spans, gold_spans)
+            all_rouge_p.append(r_p)
+            all_rouge_r.append(r_r)
+            all_rouge_f1.append(r_f1)
+
+            # BERTScore best-match aggregation.
+            b_p, b_r, b_f1 = compute_bertscore_best_match_prf(
+                extracted_spans, gold_spans, scorer=bert_scorer
+            )
+            all_bert_p.append(b_p)
+            all_bert_r.append(b_r)
+            all_bert_f1.append(b_f1)
+
             if is_unanswerable:
                 unanswerable_correct.append(1 if len(extracted_spans) == 0 else 0)
         except Exception:
             print("  error during extraction/eval, counting as 0")
-            all_em.append(0.0)
             all_precision.append(0.0)
             all_recall.append(0.0)
             all_f1.append(0.0)
+            all_rouge_p.append(0.0)
+            all_rouge_r.append(0.0)
+            all_rouge_f1.append(0.0)
+            all_bert_p.append(0.0)
+            all_bert_r.append(0.0)
+            all_bert_f1.append(0.0)
             if is_unanswerable:
                 unanswerable_correct.append(0)
 
     span_metrics = {
-        "exact_match": mean(all_em) if all_em else 0.0,
         "precision": mean(all_precision) if all_precision else 0.0,
         "recall": mean(all_recall) if all_recall else 0.0,
         "f1": mean(all_f1) if all_f1 else 0.0,
+        "rouge_l_precision": mean(all_rouge_p) if all_rouge_p else 0.0,
+        "rouge_l_recall": mean(all_rouge_r) if all_rouge_r else 0.0,
+        "rouge_l_f1": mean(all_rouge_f1) if all_rouge_f1 else 0.0,
+        "bertscore_precision": mean(all_bert_p) if all_bert_p else 0.0,
+        "bertscore_recall": mean(all_bert_r) if all_bert_r else 0.0,
+        "bertscore_f1": mean(all_bert_f1) if all_bert_f1 else 0.0,
         "unanswerable_accuracy": mean(unanswerable_correct) if unanswerable_correct else 1.0,
     }
     return chunk_metrics, span_metrics
@@ -196,6 +219,7 @@ def main():
     rag_index, _ = connect_to_index(db_path=DB_PATH, verbose=False)
     reranker = BGEReranker()
     results_table = []
+    bert_scorer = get_bertscore_scorer(lang="en")
 
     for model in MODELS_TO_TEST:
         # Per-model clients/components for fair benchmarking across providers.
@@ -213,15 +237,27 @@ def main():
 
         try:
             chunk_metrics, span_metrics = run_unified_evaluation(
-                chunk_data, span_data, rag_index, reranker, query_rewriter, query_generator, rag
+                chunk_data,
+                span_data,
+                rag_index,
+                reranker,
+                query_rewriter,
+                query_generator,
+                rag,
+                bert_scorer,
             )
         except Exception:
             chunk_metrics = {"hit_rate": 0.0, "mrr": 0.0, "recall@k": 0.0}
             span_metrics = {
-                "exact_match": 0.0,
                 "precision": 0.0,
                 "recall": 0.0,
                 "f1": 0.0,
+                "rouge_l_precision": 0.0,
+                "rouge_l_recall": 0.0,
+                "rouge_l_f1": 0.0,
+                "bertscore_precision": 0.0,
+                "bertscore_recall": 0.0,
+                "bertscore_f1": 0.0,
                 "unanswerable_accuracy": 0.0,
             }
 
@@ -230,30 +266,33 @@ def main():
             "Hit Rate": chunk_metrics.get("hit_rate", 0),
             "Recall@K": chunk_metrics.get("recall@k", 0),
             "MRR": chunk_metrics.get("mrr", 0),
-            "EM": span_metrics.get("exact_match", 0),
-            "Prec": span_metrics.get("precision", 0),
-            "Rec": span_metrics.get("recall", 0),
+            "Precision": span_metrics.get("precision", 0),
+            "Recall": span_metrics.get("recall", 0),
             "F1": span_metrics.get("f1", 0),
+            "RougeF1": span_metrics.get("rouge_l_f1", 0),
+            "BertF1": span_metrics.get("bertscore_f1", 0),
             "Unans.Acc": span_metrics.get("unanswerable_accuracy", 0),
         })
 
     report_lines = []
-    report_lines.append("\n\n" + "=" * 100)
-    report_lines.append(f"{'FINAL BENCHMARK RESULTS':^100}")
-    report_lines.append("=" * 100)
+    report_lines.append("\n\n" + "=" * 132)
+    report_lines.append(f"{'FINAL BENCHMARK RESULTS':^132}")
+    report_lines.append("=" * 132)
     header = (
         f"{'Model':<35} | {'Hit Rate':<8} | {'Recall@K':<8} | {'MRR':<6} | "
-        f"{'EM':<6} | {'Prec':<6} | {'Rec':<6} | {'F1':<6} | {'Unans.Acc':<9}"
+        f"{'Precision':<9} | {'Recall':<6} | {'F1':<6} | "
+        f"{'RougeF1':<8} | {'BertF1':<8} | {'Unans.Acc':<9}"
     )
     report_lines.append(header)
-    report_lines.append("-" * 100)
+    report_lines.append("-" * 132)
     for row in results_table:
         line = (
             f"{row['Model']:<35} | {row['Hit Rate']:.3f}    | {row['Recall@K']:.3f}    | {row['MRR']:.3f}  | "
-            f"{row['EM']:.3f}  | {row['Prec']:.3f}  | {row['Rec']:.3f}  | {row['F1']:.3f}  | {row['Unans.Acc']:.3f}"
+            f"{row['Precision']:.3f}     | {row['Recall']:.3f}  | {row['F1']:.3f}  | "
+            f"{row['RougeF1']:.3f}    | {row['BertF1']:.3f}    | {row['Unans.Acc']:.3f}"
         )
         report_lines.append(line)
-    report_lines.append("=" * 100)
+    report_lines.append("=" * 132)
     print("\n".join(report_lines))
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
