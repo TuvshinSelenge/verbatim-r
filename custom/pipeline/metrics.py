@@ -6,7 +6,6 @@ from typing import Any, Dict, Set, Tuple, List
 from bert_score import BERTScorer
 from rouge_score import rouge_scorer
 from scipy.optimize import linear_sum_assignment
-from .types import TokenPairMatchCandidate
 
 
 def _strip_markdown_tables(text: str) -> str:
@@ -15,7 +14,7 @@ def _strip_markdown_tables(text: str) -> str:
     Steps: remove separator rows, flatten table cells, normalize whitespace.
     Output: plain text string with table artifacts removed.
     """
-    # Guard: empty input should stay empty.
+    # empty input should stay empty.
     if not text:
         return ""
 
@@ -101,15 +100,8 @@ def flatten_extracted_spans(spans_raw: dict) -> List[str]:
     """
     extracted: List[str] = []
 
-    # Guard: extractor output is expected to be dict-like.
     if not isinstance(spans_raw, dict):
         return extracted
-
-    # Expected shape:
-    # {
-    #   "<group_name>": ["span a", "span b", ...],
-    #   ...
-    # }
     for _, span_list in spans_raw.items():
         if not isinstance(span_list, list):
             continue
@@ -268,52 +260,51 @@ def compute_token_precision_recall_f1(
 ) -> Dict[str, float]:
     """
     Inputs: predicted span list and gold span list.
-    Steps: normalize, handle empty cases, greedy one-to-one token overlap matching.
+    Steps: normalize, handle empty cases, optimal one-to-one token overlap matching.
     Output: dict with token-level precision/recall/f1.
     """
     # Step 1: normalize both span lists and apply shared empty-input handling.
-    preds, golds, handled, precision, recall, f1 = _prepare_span_sets(
-        predicted_spans, gold_spans, normalize_answer
-    )
-    if handled:
+    preds, golds, handled, precision, recall, f1 = _prepare_span_sets(predicted_spans, gold_spans, normalize_answer)
+    
+    if handled: #if the empty case is handled, return the precision, recall, and f1
         return {"precision": precision, "recall": recall, "f1": f1}
 
-    # Step 3: build all positive-overlap candidate pairs.
-    pair_scores: List[TokenPairMatchCandidate] = []
+    # Step 3: initialize per-pair token counts and pairwise F1 matrix.
+    pred_n = len(preds)
+    gold_n = len(golds)
+    pair_f1_matrix = [[0.0 for _ in range(gold_n)] for _ in range(pred_n)] 
+    tp_matrix = [[0 for _ in range(gold_n)] for _ in range(pred_n)]
+    fp_matrix = [[0 for _ in range(gold_n)] for _ in range(pred_n)]
+    fn_matrix = [[0 for _ in range(gold_n)] for _ in range(pred_n)]
+
+    # compute the per-pair token counts and pairwise F1 matrix.
+    # calculated overlaps are stored in the pair_f1_matrix, tp_matrix, fp_matrix, and fn_matrix.
     for i, pred in enumerate(preds):
         for j, gold in enumerate(golds):
             tp, fp, fn, pair_f1 = _token_overlap_counts(pred, gold)
-            if pair_f1 > 0.0:
-                pair_scores.append(
-                    TokenPairMatchCandidate(
-                        pair_f1=pair_f1,
-                        tp=tp,
-                        pred_idx=i,
-                        gold_idx=j,
-                        fp=fp,
-                        fn=fn,
-                    )
-                )
+            pair_f1_matrix[i][j] = pair_f1 
+            tp_matrix[i][j] = tp 
+            fp_matrix[i][j] = fp
+            fn_matrix[i][j] = fn
 
-    # Step 4: greedy order = highest F1 first; tie-break by larger TP.
-    pair_scores.sort(key=lambda x: (x.pair_f1, x.tp), reverse=True)
+    # Step 4: find globally optimal one-to-one assignments.
+    cost_matrix = [[-max(0.0, score) for score in row] for row in pair_f1_matrix]
+    row_idx, col_idx = linear_sum_assignment(cost_matrix) # goal minimize the total cost
 
-    # Step 5: greedily select one-to-one matches.
+    # Step 5: aggregate token counts over selected assignments.
     used_preds: Set[int] = set()
     used_golds: Set[int] = set()
     total_tp = 0
     total_fp = 0
     total_fn = 0
 
-    # If both sides are unmatched, accept the pair and accumulate counts.
-    for pair in pair_scores:
-        if pair.pred_idx in used_preds or pair.gold_idx in used_golds:
-            continue
-        used_preds.add(pair.pred_idx)
-        used_golds.add(pair.gold_idx)
-        total_tp += pair.tp
-        total_fp += pair.fp
-        total_fn += pair.fn
+    # add the tp, fp, and fn counts for the selected assignments.
+    for i, j in zip(row_idx, col_idx):
+        used_preds.add(i)
+        used_golds.add(j)
+        total_tp += tp_matrix[i][j]
+        total_fp += fp_matrix[i][j]
+        total_fn += fn_matrix[i][j]
 
     # Step 6: any unmatched prediction contributes only FP tokens.
     for i, pred in enumerate(preds):
@@ -348,7 +339,7 @@ def _one_to_one_prf_from_pair_matrix(score_matrix: List[List[float]]) -> Tuple[f
     Steps: solve optimal one-to-one assignment with Hungarian algorithm.
     Output: set-level precision, recall, and F1.
     """
-    # Matrix shape:
+
     # rows = predictions, columns = gold spans.
     pred_n = len(score_matrix)
     gold_n = len(score_matrix[0]) if pred_n > 0 else 0

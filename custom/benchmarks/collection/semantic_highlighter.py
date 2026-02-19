@@ -66,7 +66,7 @@ MAX_EXTRACTED_SPANS = 5
 ZILLIZ_CONFIGS = [
     {"name": "sentences-0.3", "output_mode": "sentences", "threshold": 0.3},
     {"name": "sentences-0.5", "output_mode": "sentences", "threshold": 0.5},
-    {"name": "sentences-0.7", "output_mode": "sentences", "threshold": 0.7},
+    {"name": "sentences-0.7", "output_mode": "sentences", "threshold": 0.7}
 ]
 
 
