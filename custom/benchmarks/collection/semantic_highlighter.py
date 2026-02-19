@@ -71,7 +71,6 @@ ZILLIZ_CONFIGS = [
 
 
 def wrap_chunks(chunks: list) -> List[SearchResultWrapper]:
-    # The extractor expects objects with a `.text` attribute.
     wrapped = []
     for c in chunks:
         txt = c.get("text", "") if isinstance(c, dict) else getattr(c, "text", "")

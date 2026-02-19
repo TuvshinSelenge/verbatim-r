@@ -86,28 +86,27 @@ def run_strategy_retrieval(
     """
     Return (pred tuples, reranked chunks, rewritten query text).
     """
-    # Strategy A: plain vector search only.
     if strategy_name == "Baseline (Vector Only)":
         chunks = rag_index.query(query_text, k=TOP_K)
         return extract_preds(chunks), chunks, query_text
-    # Strategy B: vector search + reranker.
+
     if strategy_name == "Baseline + Reranker":
         hits = rag_index.query(query_text, k=SEARCH_K)
         chunks, _ = reranker.rerank(query_text, hits, top_k=TOP_K)
         return extract_preds(chunks), chunks, query_text
-    # Strategy C: rewrite query first, then search + rerank.
+    
     if strategy_name == "Baseline + Rewriting + Reranker":
         rewritten = query_rewriter.rewrite(query_text)
         hits = rag_index.query(rewritten, k=SEARCH_K)
         chunks, _ = reranker.rerank(rewritten, hits, top_k=TOP_K)
         return extract_preds(chunks), chunks, rewritten
-    # Strategy D: generate multiple sub-queries, merge hits, then rerank.
+  
     if strategy_name == "Baseline + Multi-Query + Reranker":
         subqs = query_generator.generate_queries(query_text)
         merged = merge_and_dedup(subqs, rag_index, PER_SUBQ_K)
         chunks, _ = reranker.rerank(query_text, merged, top_k=TOP_K)
         return extract_preds(chunks), chunks, query_text
-    # Strategy E: rewrite + multi-query + rerank (full pipeline).
+   
     if strategy_name == "Baseline + Rewriting + Multi-Query + Reranker":
         rewritten = query_rewriter.rewrite(query_text)
         subqs = query_generator.generate_queries(rewritten)
@@ -125,7 +124,7 @@ def evaluate_strategy(
     query_rewriter: QueryRewriter = None,
     query_generator: QueryGenerator = None,
 ) -> dict:
-    # Evaluate one retrieval strategy over the labeled dataset.
+    
     per_query = []
     total_queries = len(gold_data)
     skipped = 0
