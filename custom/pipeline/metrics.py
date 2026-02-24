@@ -1,11 +1,18 @@
 import re
-from collections import Counter
 from collections.abc import Callable
-from typing import Any, Dict, Set, Tuple, List
+from typing import Any, Dict, Tuple, List
 
 from bert_score import BERTScorer
+from rapidfuzz import fuzz
 from rouge_score import rouge_scorer
 from scipy.optimize import linear_sum_assignment
+
+# RapidFuzz thresholds used to show metric sensitivity from lenient to near-exact:
+#   0.50 → very lenient
+#   0.75 → lenient
+#   0.90 → strict
+#   0.95 → near-exact
+RAPIDFUZZ_THRESHOLDS: Tuple[float, ...] = (0.50, 0.75, 0.90, 0.95)
 
 
 def _strip_markdown_tables(text: str) -> str:
@@ -113,32 +120,21 @@ def flatten_extracted_spans(spans_raw: dict) -> List[str]:
     return extracted
 
 
-def _token_overlap_counts(pred_text: str, gold_text: str) -> Tuple[int, int, int, float]:
-    """
-    Inputs: one predicted span text and one gold span text.
-    Steps: tokenize, compute multiset overlap, derive TP/FP/FN and pair F1.
-    Output: (tp, fp, fn, pair_f1) for this span pair.
-    """
-    # Split each span into word tokens.
-    pred_tokens = pred_text.split()
-    gold_tokens = gold_text.split()
-
-    # Use counters so repeated tokens are counted correctly (multiset overlap).
-    pred_counter = Counter(pred_tokens)
-    gold_counter = Counter(gold_tokens)
-
-    # Counter intersection gives per-token minimum counts.
-    overlap = pred_counter & gold_counter
-
-    # Token-level confusion counts for this span pair.
-    tp = sum(overlap.values())
-    fp = len(pred_tokens) - tp
-    fn = len(gold_tokens) - tp
-
-    # Pair-level F1 built directly from TP/FP/FN.
-    denom = 2 * tp + fp + fn
-    f1 = (2 * tp / denom) if denom > 0 else 0.0
-    return tp, fp, fn, f1
+# ---------------------------------------------------------------------------
+# Token-overlap span matching (commented out; superseded by RapidFuzz PRF)
+# ---------------------------------------------------------------------------
+# def _token_overlap_counts(pred_text: str, gold_text: str) -> Tuple[int, int, int, float]:
+#     pred_tokens = pred_text.split()
+#     gold_tokens = gold_text.split()
+#     pred_counter = Counter(pred_tokens)
+#     gold_counter = Counter(gold_tokens)
+#     overlap = pred_counter & gold_counter
+#     tp = sum(overlap.values())
+#     fp = len(pred_tokens) - tp
+#     fn = len(gold_tokens) - tp
+#     denom = 2 * tp + fp + fn
+#     f1 = (2 * tp / denom) if denom > 0 else 0.0
+#     return tp, fp, fn, f1
 
 
 def _normalize_and_filter_spans(spans: List[str], normalizer: Callable[[str], str]) -> List[str]:
@@ -254,73 +250,103 @@ def _build_bertscore_f1_matrix(preds: List[str], golds: List[str], scorer: Any) 
     ]
 
 
-def compute_token_precision_recall_f1(
+def _rapidfuzz_pair_similarity(pred: str, gold: str) -> float:
+    """
+    Inputs: one normalized predicted span and one normalized gold span.
+    Steps: compute RapidFuzz weighted-ratio similarity and scale to [0, 1].
+    Output: pairwise RapidFuzz similarity score.
+    """
+    return float(fuzz.WRatio(pred, gold) / 100.0)
+
+
+def _compute_rapidfuzz_prf_at_threshold(
+    score_matrix: List[List[float]],
+    threshold: float,
+) -> Tuple[float, float, float]:
+    """
+    Inputs: pairwise RapidFuzz similarity matrix and a match threshold.
+    Steps: gate the matrix at the threshold (keep original score if score >= threshold,
+        else 0.0), then delegate to _one_to_one_prf_from_pair_matrix.
+        This keeps strict thresholding while preserving above-threshold match quality
+        during Hungarian one-to-one assignment and PRF aggregation.
+    Output: (precision, recall, f1) at the provided threshold.
+    """
+    thresholded_weight_matrix = [
+        [score if score >= threshold else 0.0 for score in row]
+        for row in score_matrix
+    ]
+    return _one_to_one_prf_from_pair_matrix(thresholded_weight_matrix)
+
+
+def compute_rapidfuzz_threshold_prf(
     predicted_spans: List[str],
     gold_spans: List[str],
-) -> Dict[str, float]:
+    thresholds: Tuple[float, ...] = RAPIDFUZZ_THRESHOLDS,
+) -> Dict[str, Tuple[float, float, float]]:
     """
-    Inputs: predicted span list and gold span list.
-    Steps: normalize, handle empty cases, optimal one-to-one token overlap matching.
-    Output: dict with token-level precision/recall/f1.
+    Inputs: predicted span list, gold span list, and RapidFuzz thresholds.
+    Steps: normalize spans, build pairwise RapidFuzz matrix once, compute PRF per threshold.
+    Output: map of threshold key -> (precision, recall, f1).
     """
-    # Step 1: normalize both span lists and apply shared empty-input handling.
-    preds, golds, handled, precision, recall, f1 = _prepare_span_sets(predicted_spans, gold_spans, normalize_answer)
-    
-    if handled: #if the empty case is handled, return the precision, recall, and f1
-        return {"precision": precision, "recall": recall, "f1": f1}
+    preds, golds, handled, precision, recall, f1 = _prepare_span_sets(
+        predicted_spans, gold_spans, normalize_answer
+    )
+    if handled:
+        return {
+            f"{int(round(threshold * 100))}": (precision, recall, f1)
+            for threshold in thresholds
+        }
 
-    # Step 3: initialize per-pair token counts and pairwise F1 matrix.
-    pred_n = len(preds)
-    gold_n = len(golds)
-    pair_f1_matrix = [[0.0 for _ in range(gold_n)] for _ in range(pred_n)] 
-    tp_matrix = [[0 for _ in range(gold_n)] for _ in range(pred_n)]
-    fp_matrix = [[0 for _ in range(gold_n)] for _ in range(pred_n)]
-    fn_matrix = [[0 for _ in range(gold_n)] for _ in range(pred_n)]
+    score_matrix = _build_pair_score_matrix(preds, golds, _rapidfuzz_pair_similarity)
+    return {
+        f"{int(round(threshold * 100))}": _compute_rapidfuzz_prf_at_threshold(
+            score_matrix=score_matrix,
+            threshold=threshold,
+        )
+        for threshold in thresholds
+    }
 
-    # compute the per-pair token counts and pairwise F1 matrix.
-    # calculated overlaps are stored in the pair_f1_matrix, tp_matrix, fp_matrix, and fn_matrix.
-    for i, pred in enumerate(preds):
-        for j, gold in enumerate(golds):
-            tp, fp, fn, pair_f1 = _token_overlap_counts(pred, gold)
-            pair_f1_matrix[i][j] = pair_f1 
-            tp_matrix[i][j] = tp 
-            fp_matrix[i][j] = fp
-            fn_matrix[i][j] = fn
 
-    # Step 4: find globally optimal one-to-one assignments.
-    cost_matrix = [[-max(0.0, score) for score in row] for row in pair_f1_matrix]
-    row_idx, col_idx = linear_sum_assignment(cost_matrix) # goal minimize the total cost
-
-    # Step 5: aggregate token counts over selected assignments.
-    used_preds: Set[int] = set()
-    used_golds: Set[int] = set()
-    total_tp = 0
-    total_fp = 0
-    total_fn = 0
-
-    # add the tp, fp, and fn counts for the selected assignments.
-    for i, j in zip(row_idx, col_idx):
-        used_preds.add(i)
-        used_golds.add(j)
-        total_tp += tp_matrix[i][j]
-        total_fp += fp_matrix[i][j]
-        total_fn += fn_matrix[i][j]
-
-    # Step 6: any unmatched prediction contributes only FP tokens.
-    for i, pred in enumerate(preds):
-        if i not in used_preds:
-            total_fp += len(pred.split())
-
-    # Step 7: any unmatched gold contributes only FN tokens.
-    for j, gold in enumerate(golds):
-        if j not in used_golds:
-            total_fn += len(gold.split())
-
-    # Step 8: compute global precision/recall/F1 from aggregate counts.
-    precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0.0
-    recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0.0
-    f1 = _f1_from_precision_recall(precision, recall)
-    return {"precision": precision, "recall": recall, "f1": f1}
+# ---------------------------------------------------------------------------
+# Token-level P/R/F1 (commented out; RapidFuzz@threshold is the primary metric)
+# ---------------------------------------------------------------------------
+# def compute_token_precision_recall_f1(
+#     predicted_spans: List[str],
+#     gold_spans: List[str],
+# ) -> Dict[str, float]:
+#     """Token-overlap span matching via SQuAD-style micro-aggregated TP/FP/FN."""
+#     preds, golds, handled, precision, recall, f1 = _prepare_span_sets(
+#         predicted_spans, gold_spans, normalize_answer
+#     )
+#     if handled:
+#         return {"precision": precision, "recall": recall, "f1": f1}
+#     pred_n, gold_n = len(preds), len(golds)
+#     pair_f1_matrix = [[0.0] * gold_n for _ in range(pred_n)]
+#     tp_matrix = [[0] * gold_n for _ in range(pred_n)]
+#     fp_matrix = [[0] * gold_n for _ in range(pred_n)]
+#     fn_matrix = [[0] * gold_n for _ in range(pred_n)]
+#     for i, pred in enumerate(preds):
+#         for j, gold in enumerate(golds):
+#             tp, fp, fn, pair_f1 = _token_overlap_counts(pred, gold)
+#             pair_f1_matrix[i][j] = pair_f1
+#             tp_matrix[i][j] = tp
+#             fp_matrix[i][j] = fp
+#             fn_matrix[i][j] = fn
+#     cost_matrix = [[-max(0.0, s) for s in row] for row in pair_f1_matrix]
+#     row_idx, col_idx = linear_sum_assignment(cost_matrix)
+#     used_preds, used_golds = set(row_idx), set(col_idx)
+#     total_tp = sum(tp_matrix[i][j] for i, j in zip(row_idx, col_idx))
+#     total_fp = sum(fp_matrix[i][j] for i, j in zip(row_idx, col_idx))
+#     total_fn = sum(fn_matrix[i][j] for i, j in zip(row_idx, col_idx))
+#     for i, pred in enumerate(preds):
+#         if i not in used_preds:
+#             total_fp += len(pred.split())
+#     for j, gold in enumerate(golds):
+#         if j not in used_golds:
+#             total_fn += len(gold.split())
+#     precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0.0
+#     recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0.0
+#     return {"precision": precision, "recall": recall, "f1": _f1_from_precision_recall(precision, recall)}
 
 
 def get_rouge_l_scorer() -> Any:
@@ -335,40 +361,44 @@ def get_rouge_l_scorer() -> Any:
 
 def _one_to_one_prf_from_pair_matrix(score_matrix: List[List[float]]) -> Tuple[float, float, float]:
     """
-    Inputs: pairwise similarity matrix (rows=preds, cols=golds).
-    Steps: solve optimal one-to-one assignment with Hungarian algorithm.
-    Output: set-level precision, recall, and F1.
-    """
+    Shared PRF aggregator used by ROUGE-L, BERTScore, and RapidFuzz metrics.
 
-    # rows = predictions, columns = gold spans.
+    Inputs: pairwise similarity matrix (rows=preds, cols=golds). Scores may be
+        continuous in [0, 1] (ROUGE-L, BERTScore), threshold-gated weighted
+        RapidFuzz scores, or binary 0/1.
+    Steps:
+        1. Clip scores to [0, 1] so negative entries do not reduce the sum.
+        2. Solve optimal one-to-one assignment (Hungarian algorithm) that
+           maximises the total matched-score sum.
+        3. Compute set-level P and R with the unified formula:
+               P = Σ matched_scores / |preds|
+               R = Σ matched_scores / |golds|
+           Unmatched predictions contribute 0 to the numerator, penalising
+           over-generation; unmatched golds penalise under-generation.
+        4. F1 = harmonic mean of P and R.
+    Output: (precision, recall, f1).
+
+    This formula is equivalent to the standard binary TP/FP/FN formula when
+    scores are 0/1 (TP = Σ scores, FP = |preds| − TP, FN = |golds| − TP),
+    and generalises it to soft/graded match quality for continuous metrics.
+    """
     pred_n = len(score_matrix)
     gold_n = len(score_matrix[0]) if pred_n > 0 else 0
 
-    # Edge cases first.
     if pred_n == 0 and gold_n == 0:
         return 1.0, 1.0, 1.0
     if pred_n == 0 or gold_n == 0:
         return 0.0, 0.0, 0.0
 
-    # convert similarity scores to costs.
-    # We clip to non-negative to preserve previous behavior where
-    # negative pair scores do not reduce matched_score_sum.
-    clipped_scores: List[List[float]] = []
-    for row in score_matrix:
-        clipped_scores.append([max(0.0, score) for score in row])
+    clipped_scores: List[List[float]] = [
+        [max(0.0, score) for score in row] for row in score_matrix
+    ]
     cost_matrix = [[-score for score in row] for row in clipped_scores]
 
-    # Solve global one-to-one assignment for min(pred_n, gold_n) pairs.
     row_idx, col_idx = linear_sum_assignment(cost_matrix)
 
-    # Sum assigned pair scores.
-    matched_score_sum = 0.0
-    for i, j in zip(row_idx, col_idx):
-        matched_score_sum += clipped_scores[i][j]
+    matched_score_sum = sum(clipped_scores[i][j] for i, j in zip(row_idx, col_idx))
 
-    # Convert matched-score sum into set-level precision and recall.
-    # - precision averages score over prediction count
-    # - recall averages score over gold count
     precision = matched_score_sum / pred_n
     recall = matched_score_sum / gold_n
     f1 = _f1_from_precision_recall(precision, recall)

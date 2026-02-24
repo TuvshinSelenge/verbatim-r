@@ -16,8 +16,8 @@ from dotenv import load_dotenv
 from custom.setup import connect_to_index, BGEReranker, QueryRewriter, QueryGenerator
 from custom.pipeline.metrics import (
     compute_bertscore_best_match_prf,
+    compute_rapidfuzz_threshold_prf,
     compute_rouge_l_best_match_prf,
-    compute_token_precision_recall_f1,
     get_bertscore_scorer,
 )
 from custom.pipeline.retrieval import retrieve_and_rerank as shared_retrieve_and_rerank
@@ -64,9 +64,7 @@ MAX_EXTRACTED_SPANS = 5
 # Threshold Default: Keeps sentences with >50% probability score.
 # Threshold 0.7: Keeps sentences with >70% probability score, resulting in more conservative extraction.
 ZILLIZ_CONFIGS = [
-    {"name": "sentences-0.3", "output_mode": "sentences", "threshold": 0.3},
-    {"name": "sentences-0.5", "output_mode": "sentences", "threshold": 0.5},
-    {"name": "sentences-0.7", "output_mode": "sentences", "threshold": 0.7}
+    {"name": "sentences-0.3", "output_mode": "sentences", "threshold": 0.3}
 ]
 
 
@@ -160,49 +158,82 @@ def run_zilliz_extraction_evaluation(
                     return spans[:MAX_EXTRACTED_SPANS]
                 extracted_spans = run_with_timeout(do_extract, timeout_sec=QUERY_TIMEOUT)
 
-            # Step 4: Score extracted spans against gold spans (token + rouge + bert).
+            # Step 4: Score extracted spans against gold spans.
             detail["extracted_spans"] = extracted_spans
             if not is_unanswerable:
-                token_metrics = compute_token_precision_recall_f1(extracted_spans, gold_spans)
                 rouge_scores = compute_rouge_l_best_match_prf(extracted_spans, gold_spans)
                 bert_scores = compute_bertscore_best_match_prf(
                     extracted_spans, gold_spans, scorer=bert_scorer
                 )
+                rapidfuzz_scores = compute_rapidfuzz_threshold_prf(extracted_spans, gold_spans)
                 append_span_metric_scores(
                     metric_lists=span_metric_lists,
-                    token_metrics=token_metrics,
                     rouge_scores=rouge_scores,
                     bert_scores=bert_scores,
+                    rapidfuzz_scores=rapidfuzz_scores,
                 )
-                _, _, rouge_f1 = rouge_scores
-                _, _, bert_f1 = bert_scores
+                rouge_p, rouge_r, rouge_f1 = rouge_scores
+                bert_p, bert_r, bert_f1 = bert_scores
+                rf75_p, rf75_r, rf75_f1 = rapidfuzz_scores["75"]
+                rf90_p, rf90_r, rf90_f1 = rapidfuzz_scores["90"]
+                rf95_p, rf95_r, rf95_f1 = rapidfuzz_scores["95"]
                 detail["metrics"] = {
-                    "precision": token_metrics["precision"],
-                    "recall": token_metrics["recall"],
-                    "f1": token_metrics["f1"],
+                    "rouge_l_precision": rouge_p,
+                    "rouge_l_recall": rouge_r,
                     "rouge_l_f1": rouge_f1,
+                    "bertscore_precision": bert_p,
+                    "bertscore_recall": bert_r,
                     "bertscore_f1": bert_f1,
+                    "rapidfuzz_75_precision": rf75_p,
+                    "rapidfuzz_75_recall": rf75_r,
+                    "rapidfuzz_75_f1": rf75_f1,
+                    "rapidfuzz_90_precision": rf90_p,
+                    "rapidfuzz_90_recall": rf90_r,
+                    "rapidfuzz_90_f1": rf90_f1,
+                    "rapidfuzz_95_precision": rf95_p,
+                    "rapidfuzz_95_recall": rf95_r,
+                    "rapidfuzz_95_f1": rf95_f1,
                 }
             else:
                 abstained = len(extracted_spans) == 0
                 unanswerable_correct.append(1 if abstained else 0)
                 detail["metrics"] = {
-                    "precision": None,
-                    "recall": None,
-                    "f1": None,
+                    "rouge_l_precision": None,
+                    "rouge_l_recall": None,
                     "rouge_l_f1": None,
+                    "bertscore_precision": None,
+                    "bertscore_recall": None,
                     "bertscore_f1": None,
+                    "rapidfuzz_75_precision": None,
+                    "rapidfuzz_75_recall": None,
+                    "rapidfuzz_75_f1": None,
+                    "rapidfuzz_90_precision": None,
+                    "rapidfuzz_90_recall": None,
+                    "rapidfuzz_90_f1": None,
+                    "rapidfuzz_95_precision": None,
+                    "rapidfuzz_95_recall": None,
+                    "rapidfuzz_95_f1": None,
                 }
                 detail["correctly_abstained"] = abstained
         except Exception as e:
             print("  error during extraction eval, counting as 0")
             detail["extracted_spans"] = []
             detail["metrics"] = {
-                "precision": 0.0,
-                "recall": 0.0,
-                "f1": 0.0,
+                "rouge_l_precision": 0.0,
+                "rouge_l_recall": 0.0,
                 "rouge_l_f1": 0.0,
+                "bertscore_precision": 0.0,
+                "bertscore_recall": 0.0,
                 "bertscore_f1": 0.0,
+                "rapidfuzz_75_precision": 0.0,
+                "rapidfuzz_75_recall": 0.0,
+                "rapidfuzz_75_f1": 0.0,
+                "rapidfuzz_90_precision": 0.0,
+                "rapidfuzz_90_recall": 0.0,
+                "rapidfuzz_90_f1": 0.0,
+                "rapidfuzz_95_precision": 0.0,
+                "rapidfuzz_95_recall": 0.0,
+                "rapidfuzz_95_f1": 0.0,
             }
             detail["status"] = "ERROR"
             detail["error"] = str(e)
@@ -311,7 +342,7 @@ def main():
     )
     report_lines = build_table_report_lines(
         title="ZILLIZ EXTRACTOR BENCHMARK RESULTS",
-        width=140,
+        width=300,
         header=header,
         row_lines=row_lines,
     )

@@ -8,6 +8,7 @@ from .retrieval import (
 )
 from .metrics import (
     compute_bertscore_best_match_prf,
+    compute_rapidfuzz_threshold_prf,
     compute_rouge_l_best_match_prf,
     flatten_extracted_spans,
     get_bertscore_scorer,

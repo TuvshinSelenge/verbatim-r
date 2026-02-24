@@ -4,6 +4,22 @@ from pathlib import Path
 from statistics import mean
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from custom.pipeline.metrics import RAPIDFUZZ_THRESHOLDS
+
+
+def _threshold_label(threshold: float) -> str:
+    return f"{int(round(threshold * 100))}"
+
+
+def _rapidfuzz_metric_key(threshold_label: str, metric: str) -> str:
+    return f"rapidfuzz_{threshold_label}_{metric}"
+
+
+def _rapidfuzz_threshold_labels(
+    thresholds: Sequence[float] = RAPIDFUZZ_THRESHOLDS,
+) -> List[str]:
+    return [_threshold_label(threshold) for threshold in thresholds]
+
 
 def load_json(path: Path) -> Any:
     if not path.exists():
@@ -65,10 +81,7 @@ def zero_span_metrics() -> Dict[str, float]:
     """
     Default extraction metrics used on evaluation failure.
     """
-    return {
-        "precision": 0.0,
-        "recall": 0.0,
-        "f1": 0.0,
+    metrics = {
         "rouge_l_precision": 0.0,
         "rouge_l_recall": 0.0,
         "rouge_l_f1": 0.0,
@@ -77,6 +90,11 @@ def zero_span_metrics() -> Dict[str, float]:
         "bertscore_f1": 0.0,
         "unanswerable_accuracy": 0.0,
     }
+    for threshold_label in _rapidfuzz_threshold_labels():
+        metrics[_rapidfuzz_metric_key(threshold_label, "precision")] = 0.0
+        metrics[_rapidfuzz_metric_key(threshold_label, "recall")] = 0.0
+        metrics[_rapidfuzz_metric_key(threshold_label, "f1")] = 0.0
+    return metrics
 
 
 def make_benchmark_result_row(
@@ -93,13 +111,20 @@ def make_benchmark_result_row(
         "Hit Rate": chunk_metrics.get("hit_rate", 0.0),
         "Recall@K": chunk_metrics.get("recall@k", 0.0),
         "MRR": chunk_metrics.get("mrr", 0.0),
-        "Precision": span_metrics.get("precision", 0.0),
-        "Recall": span_metrics.get("recall", 0.0),
-        "F1": span_metrics.get("f1", 0.0),
-        "RougeF1": span_metrics.get("rouge_l_f1", 0.0),
-        "BertF1": span_metrics.get("bertscore_f1", 0.0),
         "Unans.Acc": span_metrics.get("unanswerable_accuracy", 0.0),
     }
+    for threshold_label in _rapidfuzz_threshold_labels():
+        row[f"RF@{threshold_label}-P"] = span_metrics.get(
+            _rapidfuzz_metric_key(threshold_label, "precision"), 0.0
+        )
+        row[f"RF@{threshold_label}-R"] = span_metrics.get(
+            _rapidfuzz_metric_key(threshold_label, "recall"), 0.0
+        )
+        row[f"RF@{threshold_label}-F1"] = span_metrics.get(
+            _rapidfuzz_metric_key(threshold_label, "f1"), 0.0
+        )
+    row["RougeF1"] = span_metrics.get("rouge_l_f1", 0.0)
+    row["BertF1"] = span_metrics.get("bertscore_f1", 0.0)
     if extras:
         row.update(extras)
     return row
@@ -116,13 +141,20 @@ def build_benchmark_header_and_rows(
         ("Hit Rate", 8, True),
         ("Recall@K", 8, True),
         ("MRR", 6, True),
-        ("Precision", 9, True),
-        ("Recall", 6, True),
-        ("F1", 6, True),
         ("RougeF1", 8, True),
         ("BertF1", 8, True),
         ("Unans.Acc", 9, True),
     ]
+    rapidfuzz_columns: List[Tuple[str, int, bool]] = []
+    for threshold_label in _rapidfuzz_threshold_labels():
+        rapidfuzz_columns.extend(
+            [
+                (f"RF@{threshold_label}-P", 8, True),
+                (f"RF@{threshold_label}-R", 8, True),
+                (f"RF@{threshold_label}-F1", 9, True),
+            ]
+        )
+    metric_columns = metric_columns[:3] + rapidfuzz_columns + metric_columns[3:]
     all_columns: List[Tuple[str, int, bool]] = [(name, width, False) for name, width in leading_columns] + metric_columns
 
     header = " | ".join(f"{name:<{width}}" for name, width, _ in all_columns)
@@ -143,10 +175,7 @@ def init_span_metric_lists() -> Dict[str, List[float]]:
     """
     Create empty accumulators for span-level metric means.
     """
-    return {
-        "precision": [],
-        "recall": [],
-        "f1": [],
+    metric_lists = {
         "rouge_l_precision": [],
         "rouge_l_recall": [],
         "rouge_l_f1": [],
@@ -154,28 +183,36 @@ def init_span_metric_lists() -> Dict[str, List[float]]:
         "bertscore_recall": [],
         "bertscore_f1": [],
     }
+    for threshold_label in _rapidfuzz_threshold_labels():
+        metric_lists[_rapidfuzz_metric_key(threshold_label, "precision")] = []
+        metric_lists[_rapidfuzz_metric_key(threshold_label, "recall")] = []
+        metric_lists[_rapidfuzz_metric_key(threshold_label, "f1")] = []
+    return metric_lists
 
 
 def append_span_metric_scores(
     metric_lists: Dict[str, List[float]],
-    token_metrics: Dict[str, float],
     rouge_scores: Tuple[float, float, float],
     bert_scores: Tuple[float, float, float],
+    rapidfuzz_scores: Optional[Dict[str, Tuple[float, float, float]]] = None,
 ) -> None:
     """
     Append one successful query's span metric scores to accumulators.
     """
     rouge_p, rouge_r, rouge_f1 = rouge_scores
     bert_p, bert_r, bert_f1 = bert_scores
-    metric_lists["precision"].append(token_metrics["precision"])
-    metric_lists["recall"].append(token_metrics["recall"])
-    metric_lists["f1"].append(token_metrics["f1"])
     metric_lists["rouge_l_precision"].append(rouge_p)
     metric_lists["rouge_l_recall"].append(rouge_r)
     metric_lists["rouge_l_f1"].append(rouge_f1)
     metric_lists["bertscore_precision"].append(bert_p)
     metric_lists["bertscore_recall"].append(bert_r)
     metric_lists["bertscore_f1"].append(bert_f1)
+    rapidfuzz_scores = rapidfuzz_scores or {}
+    for threshold_label in _rapidfuzz_threshold_labels():
+        p, r, f1 = rapidfuzz_scores.get(threshold_label, (0.0, 0.0, 0.0))
+        metric_lists[_rapidfuzz_metric_key(threshold_label, "precision")].append(p)
+        metric_lists[_rapidfuzz_metric_key(threshold_label, "recall")].append(r)
+        metric_lists[_rapidfuzz_metric_key(threshold_label, "f1")].append(f1)
 
 
 def append_zero_span_metric_scores(metric_lists: Dict[str, List[float]]) -> None:
@@ -193,10 +230,7 @@ def summarize_span_metric_lists(
     """
     Convert span metric accumulators into final mean metrics.
     """
-    return {
-        "precision": mean(metric_lists["precision"]) if metric_lists["precision"] else 0.0,
-        "recall": mean(metric_lists["recall"]) if metric_lists["recall"] else 0.0,
-        "f1": mean(metric_lists["f1"]) if metric_lists["f1"] else 0.0,
+    summary = {
         "rouge_l_precision": mean(metric_lists["rouge_l_precision"]) if metric_lists["rouge_l_precision"] else 0.0,
         "rouge_l_recall": mean(metric_lists["rouge_l_recall"]) if metric_lists["rouge_l_recall"] else 0.0,
         "rouge_l_f1": mean(metric_lists["rouge_l_f1"]) if metric_lists["rouge_l_f1"] else 0.0,
@@ -205,6 +239,14 @@ def summarize_span_metric_lists(
         "bertscore_f1": mean(metric_lists["bertscore_f1"]) if metric_lists["bertscore_f1"] else 0.0,
         "unanswerable_accuracy": mean(unanswerable_correct) if unanswerable_correct else 1.0,
     }
+    for threshold_label in _rapidfuzz_threshold_labels():
+        precision_key = _rapidfuzz_metric_key(threshold_label, "precision")
+        recall_key = _rapidfuzz_metric_key(threshold_label, "recall")
+        f1_key = _rapidfuzz_metric_key(threshold_label, "f1")
+        summary[precision_key] = mean(metric_lists[precision_key]) if metric_lists[precision_key] else 0.0
+        summary[recall_key] = mean(metric_lists[recall_key]) if metric_lists[recall_key] else 0.0
+        summary[f1_key] = mean(metric_lists[f1_key]) if metric_lists[f1_key] else 0.0
+    return summary
 
 
 def run_with_timeout(func, timeout_sec: int):

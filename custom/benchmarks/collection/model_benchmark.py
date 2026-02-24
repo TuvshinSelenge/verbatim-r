@@ -19,9 +19,10 @@ from dotenv import load_dotenv
 from custom.setup import connect_to_index, BGEReranker, QueryRewriter, QueryGenerator
 from custom.pipeline.retrieval import retrieve_and_rerank
 from custom.pipeline.metrics import (
+    RAPIDFUZZ_THRESHOLDS,
     compute_bertscore_best_match_prf,
+    compute_rapidfuzz_threshold_prf,
     compute_rouge_l_best_match_prf,
-    compute_token_precision_recall_f1,
     flatten_extracted_spans,
     get_bertscore_scorer,
 )
@@ -161,20 +162,20 @@ def run_unified_evaluation(
                 return flatten_extracted_spans(spans_raw)[:MAX_EXTRACTED_SPANS]
 
             extracted_spans = run_with_timeout(do_extract, timeout_sec=QUERY_TIMEOUT)
-            # Token-level P/R/F1 with one-to-one span alignment.
-            token_metrics = compute_token_precision_recall_f1(extracted_spans, gold_spans)
-            # ROUGE-L best-match aggregation.
+            # ROUGE-L one-to-one best-match PRF (soft LCS similarity).
             rouge_scores = compute_rouge_l_best_match_prf(extracted_spans, gold_spans)
-
-            # BERTScore best-match aggregation.
+            # BERTScore one-to-one best-match PRF (contextual semantic similarity).
             bert_scores = compute_bertscore_best_match_prf(
                 extracted_spans, gold_spans, scorer=bert_scorer
             )
+            # RapidFuzz one-to-one best-match PRF at configured thresholds
+            # (primary extraction metric; binary hard-match via WRatio similarity).
+            rapidfuzz_scores = compute_rapidfuzz_threshold_prf(extracted_spans, gold_spans)
             append_span_metric_scores(
                 metric_lists=span_metric_lists,
-                token_metrics=token_metrics,
                 rouge_scores=rouge_scores,
                 bert_scores=bert_scores,
+                rapidfuzz_scores=rapidfuzz_scores,
             )
             if is_unanswerable:
                 unanswerable_correct.append(1 if len(extracted_spans) == 0 else 0)
@@ -254,8 +255,8 @@ def main():
         leading_columns=[("Model", 35)],
     )
     report_lines = build_table_report_lines(
-        title="FINAL BENCHMARK RESULTS",
-        width=132,
+        title=f"FINAL BENCHMARK RESULTS (RF thresholds: {'/'.join(str(int(round(t * 100))) for t in RAPIDFUZZ_THRESHOLDS)}%)",
+        width=max(280, len(header) + 4),
         header=header,
         row_lines=row_lines,
         leading_blank_lines=2,
