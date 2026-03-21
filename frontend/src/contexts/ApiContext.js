@@ -14,6 +14,9 @@ export const ApiProvider = ({ children }) => {
   const [isResourcesLoaded, setIsResourcesLoaded] = useState(false);
   const [currentQuery, setCurrentQuery] = useState(null);
   const [numDocs, setNumDocs] = useState(5); // Default to 5 documents
+  const [banks, setBanks] = useState([]);
+  /** Empty string = search all chunks; otherwise bank_profiles id (e.g. rbi, bawag). */
+  const [bankId, setBankId] = useState('');
 
   // Add a ref to track document updates
   const documentUpdateTimeoutRef = useRef(null);
@@ -34,10 +37,20 @@ export const ApiProvider = ({ children }) => {
     }
   }, []);
 
+  const refreshBanks = useCallback(async () => {
+    try {
+      const response = await axios.get('/api/custom/banks');
+      setBanks(response.data?.banks || []);
+    } catch {
+      setBanks([]);
+    }
+  }, []);
+
   // Check if resources are loaded on mount
   useEffect(() => {
     refreshStatus();
-  }, [refreshStatus]);
+    refreshBanks();
+  }, [refreshStatus, refreshBanks]);
 
   // Submit a query
   const submitQuery = useCallback(async (question) => {
@@ -68,7 +81,8 @@ export const ApiProvider = ({ children }) => {
         },
         body: JSON.stringify({
           question,
-          num_docs: numDocs
+          num_docs: numDocs,
+          ...(bankId ? { bank_id: bankId } : {}),
         })
       });
       
@@ -114,6 +128,9 @@ export const ApiProvider = ({ children }) => {
             
             if (data.error) {
               setError(data.error);
+              if (data.done) {
+                setIsLoading(false);
+              }
               continue;
             }
             
@@ -206,7 +223,7 @@ export const ApiProvider = ({ children }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [isResourcesLoaded, numDocs]);
+  }, [isResourcesLoaded, numDocs, bankId]);
 
   // Load resources with optional API key
   const loadResources = useCallback(async (apiKey = null) => {
@@ -273,11 +290,15 @@ export const ApiProvider = ({ children }) => {
     isResourcesLoaded,
     currentQuery,
     numDocs,
+    banks,
+    bankId,
+    setBankId,
     submitQuery,
     loadResources,
     updateNumDocs,
     resetQuery,
     refreshStatus,
+    refreshBanks,
   };
 
   return <ApiContext.Provider value={value}>{children}</ApiContext.Provider>;

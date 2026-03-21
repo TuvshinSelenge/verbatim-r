@@ -1,12 +1,13 @@
 # Query Generator with robust JSON parsing for Gemini models
 import json
 import re
-from typing import List
+from typing import List, Optional
 from openai import OpenAI
 
-BANK_NAME = "Raiffeisen Bank International AG"
-BANK_SHORT = "RBI"
 LLM_MODEL = "google/gemini-3-flash-preview"
+
+_DEFAULT_BANK_NAME = "Raiffeisen Bank International AG"
+_DEFAULT_BANK_SHORT = "RBI"
 
 
 def safe_parse_queries(raw: str, fallback_query: str) -> List[str]:
@@ -44,13 +45,28 @@ def safe_parse_queries(raw: str, fallback_query: str) -> List[str]:
 class QueryGenerator:
     """Generates multiple search queries from a user question."""
 
-    def __init__(self, client: OpenAI = None, model: str = LLM_MODEL):
+    def __init__(
+        self,
+        client: OpenAI = None,
+        model: str = LLM_MODEL,
+        bank_name: str = _DEFAULT_BANK_NAME,
+        bank_short_name: str = _DEFAULT_BANK_SHORT,
+    ):
         self.client = client or OpenAI()
         self.model = model
+        self.bank_name = bank_name
+        self.bank_short_name = bank_short_name
 
-    def generate_queries(self, question: str) -> List[str]:
+    def generate_queries(
+        self,
+        question: str,
+        bank_name: Optional[str] = None,
+        bank_short_name: Optional[str] = None,
+    ) -> List[str]:
+        bn = bank_name if bank_name is not None else self.bank_name
+        bs = bank_short_name if bank_short_name is not None else self.bank_short_name
         prompt = f"""
-You generate search queries to retrieve relevant chunks from a bank annual report for: {BANK_NAME} ({BANK_SHORT}).
+You generate search queries to retrieve relevant chunks from a bank annual report for: {bn} ({bs}).
 
 Return JSON only with this schema:
 {{"queries": ["q1","q2","q3"]}}

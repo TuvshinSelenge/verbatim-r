@@ -1,0 +1,58 @@
+{
+  "banks": [
+    {
+      "id": "rbi",
+      "label": "Raiffeisen Bank International (RBI)",
+      "legal_name": "Raiffeisen Bank International AG",
+      "short_name": "RBI",
+      "span_file": "span_RBI.json",
+      "match_dataset_id": "rbi",
+      "source_substrings": ["Raiffeisen", "RBI", "rbi", "raiffeisen"]
+    },
+    {
+      "id": "bawag",
+      "label": "BAWAG Group AG",
+      "legal_name": "BAWAG Group AG",
+      "short_name": "BAWAG Group",
+      "span_file": "span_Bawag.json",
+      "match_dataset_id": "bawag",
+      "source_substrings": ["Bawag", "BAWAG", "bawag"]
+    },
+    {
+      "id": "erste",
+      "label": "Erste Group",
+      "legal_name": "Erste Group Bank AG",
+      "short_name": "Erste",
+      "span_file": "span_Erste.json",
+      "match_dataset_id": "erste",
+      "exact_source_paths": ["Erst_Bank.pdf"],
+      "source_basenames": [
+        "Erst_Bank.pdf",
+        "Erste_Bank.pdf",
+        "Erste Bank.pdf",
+        "Erste-Bank.pdf"
+      ],
+      "source_substrings": [
+        "Erst_Bank",
+        "Erst_Bank.pdf",
+        "erst_bank",
+        "Erste_Bank",
+        "Erste Bank",
+        "Erste-Bank",
+        "Erste",
+        "erste",
+        "erste_bank",
+        "Erste_Bank.pdf"
+      ]
+    },
+    {
+      "id": "uni",
+      "label": "UniCredit Bank Austria",
+      "legal_name": "UniCredit Bank Austria AG",
+      "short_name": "UniCredit",
+      "span_file": "span_Uni.json",
+      "match_dataset_id": "uni",
+      "source_substrings": ["UniCredit", "unicredit", "Bank_Austria", "bank austria"]
+    }
+  ]
+}

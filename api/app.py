@@ -58,6 +58,18 @@ class StreamQueryRequestModel(BaseModel):
     num_docs: int = 5
 
 
+class CustomStreamQueryRequestModel(BaseModel):
+    """Custom pipeline: optional bank scopes Milvus + rewriter/generator prompts."""
+
+    question: str
+    num_docs: int = 5
+    bank_id: Optional[str] = None
+    metadata_filter: Optional[str] = Field(
+        default=None,
+        description="Raw Milvus filter expression; overrides bank_id if set",
+    )
+
+
 class StatusResponse(BaseModel):
     resources_loaded: bool
     message: str
@@ -380,8 +392,71 @@ async def query_stream_endpoint(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.get("/api/custom/banks")
+async def list_custom_banks():
+    """Bank ids/labels from bank_profiles.json; indexed=true if a PDF in Milvus matches."""
+    try:
+        from custom.setup.bank_context import load_bank_profiles, pick_scope_for_profile
+        from custom.setup.report_scope import list_report_scopes
+
+        banks = load_bank_profiles()
+    except Exception as e:
+        logger.warning("Could not load bank profiles: %s", e)
+        return {"banks": []}
+
+    from custom.setup.paths import resolve_custom_milvus_db_path
+
+    db_path = resolve_custom_milvus_db_path()
+    scopes: list = []
+    if os.path.exists(db_path):
+        try:
+            scopes = list_report_scopes(db_path)
+        except Exception as e:
+            logger.warning("list_report_scopes: %s", e)
+
+    out = []
+    for b in banks:
+        bid = b.get("id")
+        if not bid:
+            continue
+        scope = (
+            pick_scope_for_profile(b, scopes, db_path) if scopes else None
+        )
+        indexed = bool(scope and scope.meta_value)
+        out.append(
+            {
+                "id": str(bid),
+                "label": str(b.get("label") or bid),
+                "indexed": indexed,
+            }
+        )
+    return {"banks": out}
+
+
+@app.get("/api/custom/indexed-sources")
+async def list_indexed_milvus_sources():
+    """
+    Distinct chunk source identifiers stored in Milvus (actual paths / dataset_id values).
+    Use this to set bank_profiles ``source_substrings`` or ``exact_source_paths`` accurately.
+    """
+    from custom.setup.paths import resolve_custom_milvus_db_path
+    from custom.setup.report_scope import list_indexed_source_records
+
+    db_path = resolve_custom_milvus_db_path()
+    if not os.path.exists(db_path):
+        return {"db_path": db_path, "sources": [], "error": "database file not found"}
+
+    try:
+        sources = list_indexed_source_records(db_path)
+    except Exception as e:
+        logger.warning("list_indexed_source_records: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    return {"db_path": db_path, "sources": sources}
+
+
 @app.post("/api/custom/query/stream")
-async def custom_query_stream_endpoint(request: StreamQueryRequestModel):
+async def custom_query_stream_endpoint(request: CustomStreamQueryRequestModel):
     """
     Stream a query response using the custom pipeline (query rewriting, reranking, span extraction).
     """
@@ -397,6 +472,8 @@ async def custom_query_stream_endpoint(request: StreamQueryRequestModel):
                 request.question,
                 num_docs=request.num_docs,
                 per_query_k=20,
+                bank_id=request.bank_id,
+                metadata_filter=request.metadata_filter,
             ):
                 stage_count += 1
                 logger.info(

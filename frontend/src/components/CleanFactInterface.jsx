@@ -49,7 +49,16 @@ const MarkdownComponents = {
 };
 
 const CleanFactInterface = () => {
-  const { isLoading, isResourcesLoaded, currentQuery, submitQuery, resetQuery } = useApi();
+  const {
+    isLoading,
+    isResourcesLoaded,
+    currentQuery,
+    submitQuery,
+    resetQuery,
+    banks,
+    bankId,
+    setBankId,
+  } = useApi();
   const [question, setQuestion] = useState('');
   const [selectedDocument, setSelectedDocument] = useState(0);
   const [highlightedFactId, setHighlightedFactId] = useState(null);
@@ -440,6 +449,46 @@ const CleanFactInterface = () => {
                 <label className="block text-xl lg:text-2xl font-medium text-foreground mb-4">
                   Ask a question about your documents
                 </label>
+                {banks.length > 0 && (
+                  <div className="mb-4">
+                    <label
+                      htmlFor="bank-scope"
+                      className="block text-sm font-medium text-muted-foreground mb-2"
+                    >
+                      Bank / report scope
+                    </label>
+                    <select
+                      id="bank-scope"
+                      value={bankId}
+                      onChange={(e) => setBankId(e.target.value)}
+                      disabled={!isResourcesLoaded || isLoading}
+                      className="w-full max-w-md rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <option value="">All indexed reports (no filter)</option>
+                      {banks.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.label || b.id}
+                          {b.indexed === false ? " — not in index (ingest PDF first)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      Choose a bank to search only that PDF and use the right prompts. Tune
+                      matching in <code className="text-xs bg-muted px-1 rounded">custom/data/bank_profiles.json</code>.
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      <a
+                        href="/api/custom/indexed-sources"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary underline underline-offset-2 hover:opacity-80"
+                      >
+                        View exact source paths stored in Milvus
+                      </a>{' '}
+                      (JSON) — use these strings for <code className="text-xs bg-muted px-1 rounded">source_substrings</code>.
+                    </p>
+                  </div>
+                )}
                 <div className="flex gap-3 lg:gap-4">
                   <Input
                     value={question}

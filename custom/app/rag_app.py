@@ -38,6 +38,9 @@ from sentence_transformers import SentenceTransformer
 
 # Import from setup package
 from custom.setup import QueryRewriter, QueryGenerator, BGEReranker
+from custom.setup.bank_context import get_profile_by_id, load_bank_profiles, pick_scope_for_profile
+from custom.setup.paths import resolve_custom_milvus_db_path
+from custom.setup.report_scope import list_report_scopes
 
 # To run the RAG
 # use this : PYTHONPATH=. uvicorn api.app:app --reload --port 8000
@@ -46,7 +49,8 @@ from custom.setup import QueryRewriter, QueryGenerator, BGEReranker
 
 load_dotenv()
 
-DB_PATH = os.getenv("CUSTOM_DB_PATH", "./custom/milvus_verbatim.db")
+DB_PATH = resolve_custom_milvus_db_path()
+DEFAULT_CUSTOM_BANK_ID = os.getenv("CUSTOM_BANK_ID", "rbi").strip().lower() or "rbi"
 
 # Model configuration
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2" 
@@ -162,6 +166,7 @@ class RAG:
         # Initialize components
         self._init_embedders()
         self._init_vector_store()
+        self._log_bank_index_alignment()
         self._init_reranker()
         self._init_query_rewriter()
         self._init_query_generator()
@@ -205,19 +210,87 @@ class RAG:
             sparse_provider=self.sparse_provider,
         )
         print("Vector store connected")
-    
+
+    def _log_bank_index_alignment(self) -> None:
+        """At startup: show which bank profiles match an indexed PDF (filters are resolved per request)."""
+        try:
+            scopes = list_report_scopes(DB_PATH)
+        except Exception as e:
+            print(f"Bank index alignment check skipped: {e}")
+            return
+        for profile in load_bank_profiles():
+            bid = str(profile.get("id", "")).strip().lower()
+            if not bid:
+                continue
+            scope = pick_scope_for_profile(profile, scopes, DB_PATH)
+            if scope and scope.meta_value:
+                print(f"Bank {bid!r}: index match → {scope.label!r}")
+            else:
+                print(
+                    f"Bank {bid!r}: NO indexed PDF matched — UI/API queries for this bank "
+                    f"will fail until you ingest its report or fix source_substrings "
+                    f"in bank_profiles.json"
+                )
+
+    def _default_bank_names(self) -> tuple[str, str]:
+        prof = get_profile_by_id(DEFAULT_CUSTOM_BANK_ID)
+        if prof:
+            return str(prof.get("legal_name", "")), str(prof.get("short_name", ""))
+        return "Raiffeisen Bank International AG", "RBI"
+
+    def _bank_names(self, bank_id: Optional[str]) -> tuple[str, str]:
+        if not bank_id:
+            return self._default_bank_names()
+        prof = get_profile_by_id(bank_id)
+        if prof:
+            return str(prof.get("legal_name", "")), str(prof.get("short_name", ""))
+        return self._default_bank_names()
+
+    def _resolve_bank_milvus_filter(self, bank_id: str) -> Optional[str]:
+        """
+        Match bank_profiles.json to the current DB (live read — no stale cache).
+        Returns None if this bank has no PDF in the index matching source_substrings.
+        """
+        bid = (bank_id or "").strip().lower()
+        if not bid:
+            return None
+        prof = get_profile_by_id(bid)
+        if not prof:
+            return None
+        try:
+            scopes = list_report_scopes(DB_PATH)
+        except Exception as e:
+            print(f"_resolve_bank_milvus_filter: list_report_scopes failed: {e}")
+            return None
+        scope = pick_scope_for_profile(prof, scopes, DB_PATH)
+        if scope and scope.meta_value:
+            return scope.filter_expr()
+        return None
+
     def _init_reranker(self):
         """Initialize BGE reranker."""
         self.reranker = BGEReranker()
     
     def _init_query_rewriter(self):
         """Initialize query rewriter."""
-        self.query_rewriter = QueryRewriter(openai_client=self.openai_client, model=LLM_MODEL)
+        bn, bs = self._default_bank_names()
+        self.query_rewriter = QueryRewriter(
+            bank_name=bn,
+            bank_short_name=bs,
+            openai_client=self.openai_client,
+            model=LLM_MODEL,
+        )
         print("Query rewriter initialized")
     
     def _init_query_generator(self):
         """Initialize query generator."""
-        self.query_generator = QueryGenerator(self.openai_client, LLM_MODEL)
+        bn, bs = self._default_bank_names()
+        self.query_generator = QueryGenerator(
+            self.openai_client,
+            LLM_MODEL,
+            bank_name=bn,
+            bank_short_name=bs,
+        )
     
     def _init_extractor(self):
         """Initialize LLM span extractor and response builder."""
@@ -295,6 +368,8 @@ class RAG:
         question: str,
         num_docs: int = 5,
         per_query_k: int = 20,
+        bank_id: Optional[str] = None,
+        metadata_filter: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Stream a query response using the rag pipeline.
@@ -310,16 +385,50 @@ class RAG:
             Dictionary with type and data for each stage
         """
         try:
+            legal, short = self._bank_names(bank_id)
+
+            if metadata_filter:
+                milvus_filter: Optional[str] = metadata_filter
+            elif bank_id and str(bank_id).strip():
+                milvus_filter = await asyncio.to_thread(
+                    self._resolve_bank_milvus_filter, bank_id
+                )
+                if milvus_filter is None:
+                    bid = bank_id.strip().lower()
+                    prof = get_profile_by_id(bid)
+                    subs = prof.get("source_substrings", []) if prof else []
+                    sub_hint = (
+                        f" Indexed file paths must contain one of (case-insensitive): {subs}."
+                        if subs
+                        else ""
+                    )
+                    err = (
+                        f"No PDF in the index matched bank {bid!r}.{sub_hint} "
+                        "Ingest that bank's report or edit custom/data/bank_profiles.json "
+                        "(paths are matched on source_file, source, filename, file_path, etc. — "
+                        "see GET /api/custom/indexed-sources)."
+                    )
+                    yield {"type": "error", "error": err, "done": True}
+                    return
+            else:
+                milvus_filter = None
+
             # Step 0: Rewrite the question for better search
             print(f"Rewriting query: {question[:50]}...")
             rewritten_question = await asyncio.to_thread(
-                self.query_rewriter.rewrite, question
+                self.query_rewriter.rewrite,
+                question,
+                legal,
+                short,
             )
 
             # Step 1: Generate search queries from the rewritten question
             print(f"Generating queries...")
             queries = await asyncio.to_thread(
-                self.query_generator.generate_queries, rewritten_question
+                self.query_generator.generate_queries,
+                rewritten_question,
+                legal,
+                short,
             )
             print(f"Generated {len(queries)} queries")
             
@@ -329,7 +438,12 @@ class RAG:
             seen = set()
             
             async def search_query(q):
-                return await asyncio.to_thread(self.index.query, q, per_query_k)
+                return await asyncio.to_thread(
+                    self.index.query,
+                    q,
+                    per_query_k,
+                    filter=milvus_filter,
+                )
 
             all_hits = await asyncio.gather(*[search_query(q) for q in queries])
             for hits in all_hits:

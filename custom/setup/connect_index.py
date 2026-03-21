@@ -9,7 +9,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DEFAULT_DB_PATH = os.getenv("DB_PATH", "./milvus_verbatim.db")
+from custom.setup.paths import resolve_custom_milvus_db_path
+
+# Same resolution as custom RAG (CUSTOM_DB_PATH / DB_PATH / new.db if present / verbatim.db).
+DEFAULT_DB_PATH = resolve_custom_milvus_db_path()
 
 
 def get_embedders(device: str = "cpu") -> Tuple[Any, Any]:
