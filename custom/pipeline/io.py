@@ -4,7 +4,7 @@ from pathlib import Path
 from statistics import mean
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from custom.pipeline.metrics import RAPIDFUZZ_THRESHOLDS
+from custom.pipeline.constants import RAPIDFUZZ_THRESHOLDS
 
 
 def _threshold_label(threshold: float) -> str:

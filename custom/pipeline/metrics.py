@@ -7,12 +7,7 @@ from rapidfuzz import fuzz
 from rouge_score import rouge_scorer
 from scipy.optimize import linear_sum_assignment
 
-# RapidFuzz thresholds used to show metric sensitivity from lenient to near-exact:
-#   0.50 → very lenient
-#   0.75 → lenient
-#   0.90 → strict
-#   0.95 → near-exact
-RAPIDFUZZ_THRESHOLDS: Tuple[float, ...] = (0.50, 0.75, 0.90, 0.95)
+from custom.pipeline.constants import RAPIDFUZZ_THRESHOLDS
 
 
 def _strip_markdown_tables(text: str) -> str:

@@ -48,6 +48,7 @@ from custom.setup.report_scope import list_report_scopes
 # Load in different terminal the frontend with npm run dev
 
 load_dotenv()
+load_dotenv(CUSTOM_DIR / ".env")
 
 DB_PATH = resolve_custom_milvus_db_path()
 DEFAULT_CUSTOM_BANK_ID = os.getenv("CUSTOM_BANK_ID", "rbi").strip().lower() or "rbi"
@@ -157,11 +158,20 @@ class RAG:
             return
         
         print("Initializing RAG Service...")
-        
+
+        api_key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
+        if not api_key:
+            raise ValueError(
+                "OPENROUTER_API_KEY is missing or empty. "
+                "Add it to the repo-root .env (or export it) — the custom RAG uses OpenRouter for "
+                "query rewrite, multi-query generation, span extraction, and answers. "
+                "See https://openrouter.ai/"
+            )
+
         self.openai_client = OpenAI(
-        base_url=OPENROUTER_BASE_URL,
-        api_key=OPENROUTER_API_KEY,
-        )   
+            base_url=OPENROUTER_BASE_URL,
+            api_key=api_key,
+        )
         
         # Initialize components
         self._init_embedders()
