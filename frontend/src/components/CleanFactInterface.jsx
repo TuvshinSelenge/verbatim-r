@@ -303,6 +303,8 @@ const CleanFactInterface = () => {
         <div className="space-y-4">
           {documentGroup.chunks.map((chunk, chunkIndex) => {
             const highlights = chunk.highlights || [];
+            const chunkMeta = chunk.metadata || {};
+            const chunkIndexValue = chunkMeta.chunk_index ?? chunkMeta.chunk_number;
             
             // Create highlight map
             const highlightMap = highlights.map((highlight) => {
@@ -361,6 +363,16 @@ const CleanFactInterface = () => {
                 
                 {/* Chunk content */}
                 <div className="bg-card border border-border rounded-lg p-4 lg:p-6">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">
+                      Chunk {chunkIndexValue ?? "?"}
+                    </Badge>
+                    {chunkMeta.page_number !== undefined || chunkMeta.page !== undefined ? (
+                      <Badge variant="secondary" className="text-xs">
+                        Page {chunkMeta.page_number ?? chunkMeta.page}
+                      </Badge>
+                    ) : null}
+                  </div>
                   <div className="text-base lg:text-lg leading-7 lg:leading-8 text-foreground max-w-full overflow-hidden">
                     {parts.map((part, index) => {
                       if (part.type === 'highlight') {

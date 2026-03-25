@@ -8,6 +8,7 @@ with a `.text` attribute as search results.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import re
 from typing import Any, List, Dict
 
 from .llm_client import LLMClient
@@ -584,10 +585,40 @@ class LLMSpanExtractor(SpanExtractor):
         """
         verified = []
         for span in spans:
-            if span.strip() and span.strip() in document_text:
-                verified.append(span.strip())
-            else:
-                print(
-                    f"Warning: Span not found verbatim in document: '{span[:100]}...'"
-                )
+            candidate = (span or "").strip()
+            if not candidate:
+                continue
+
+            # Strict path (preserves current behavior).
+            if candidate in document_text:
+                verified.append(candidate)
+                continue
+
+            # PDF text often differs only by whitespace/tab/newline artifacts.
+            # Try a whitespace-tolerant search and return the exact matched
+            # substring from the original document so highlight indexing still works.
+            tolerant = self._find_whitespace_tolerant_match(candidate, document_text)
+            if tolerant:
+                verified.append(tolerant)
+                continue
+
+            print(
+                f"Warning: Span not found verbatim in document: '{candidate[:100]}...'"
+            )
         return verified
+
+    @staticmethod
+    def _find_whitespace_tolerant_match(span: str, document_text: str) -> str:
+        """
+        Return an exact substring from document_text by matching span tokens
+        with flexible whitespace between them.
+        """
+        tokens = [tok for tok in re.split(r"\s+", span.strip()) if tok]
+        if len(tokens) < 2:
+            return ""
+
+        pattern = r"\s+".join(re.escape(tok) for tok in tokens)
+        match = re.search(pattern, document_text)
+        if match:
+            return document_text[match.start() : match.end()].strip()
+        return ""

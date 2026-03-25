@@ -91,6 +91,8 @@ const RelevantSentences = ({
                 filteredHighlights.map((highlight, idx) => {
                   const citationIndex = getCitationIndex(highlight);
                   const isSelected = selectedHighlight === highlight;
+                  const doc = currentQuery?.documents?.[highlight.docIndex];
+                  const chunkIndex = doc?.metadata?.chunk_index ?? doc?.metadata?.chunk_number;
                   
                   return (
                     <motion.div
@@ -119,7 +121,10 @@ const RelevantSentences = ({
                         <div className="flex items-center justify-between text-xs text-slate-500">
                           <div className="flex items-center space-x-2">
                             <FaFileAlt className="w-3 h-3" />
-                            <span>Document {highlight.docIndex + 1}</span>
+                            <span>
+                              Document {highlight.docIndex + 1}
+                              {chunkIndex !== undefined && chunkIndex !== null ? ` • chunk ${chunkIndex}` : ''}
+                            </span>
                           </div>
                           
                           <div className="flex items-center space-x-2">

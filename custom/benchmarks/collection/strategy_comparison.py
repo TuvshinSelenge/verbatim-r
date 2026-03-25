@@ -30,7 +30,7 @@ DB_PATH = os.getenv("DB_PATH", str(PROJECT_ROOT / "milvus_verbatim.db"))
 TOP_K = 5
 PER_SUBQ_K = 20
 SEARCH_K = 50
-SKIP_SENTINEL_1300 = True
+SKIP_SENTINEL_3000 = True
 QUERY_TIMEOUT = 120
 MAX_429_RETRIES = 3
 RETRY_BASE_DELAY_SEC = 2
@@ -136,9 +136,9 @@ def evaluate_strategy(
         if not isinstance(expected_idxs, list):
             expected_idxs = [expected_idxs]
         # Skip sentinel-only rows that are not real retrieval targets.
-        if SKIP_SENTINEL_1300 and all(idx == 1300 for idx in expected_idxs):
+        if SKIP_SENTINEL_3000 and all(idx == 3000 for idx in expected_idxs):
             skipped += 1
-            print(f"[{strategy_name}] [{i}/{total_queries}] skipped (sentinel 1300): {query[:80]}")
+            print(f"[{strategy_name}] [{i}/{total_queries}] skipped (sentinel 3000): {query[:80]}")
             continue
 
         gold_idxs = set(expected_idxs)

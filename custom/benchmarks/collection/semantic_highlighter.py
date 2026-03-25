@@ -57,7 +57,7 @@ RETRIEVAL_MODELS = ["google/gemini-3-flash-preview"]
 TOP_K = 5
 PER_SUBQ_K = 20
 QUERY_TIMEOUT = 120
-SKIP_SENTINEL_1300 = True
+SKIP_SENTINEL_3000 = True
 MAX_EXTRACTED_SPANS = 5
 
 # Threshold 0.3: Keeps sentences with >30% probability score.
@@ -275,7 +275,7 @@ def main():
         expected_idxs = item.get("expected_chunk_index", [])
         if not isinstance(expected_idxs, list):
             expected_idxs = [expected_idxs]
-        if SKIP_SENTINEL_1300 and all(idx == 1300 for idx in expected_idxs):
+        if SKIP_SENTINEL_3000 and all(idx == 3000 for idx in expected_idxs):
             continue
         retrieval_gold_map[query] = expected_idxs
 

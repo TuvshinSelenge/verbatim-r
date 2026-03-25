@@ -11,9 +11,9 @@
     },
     {
       "id": "bawag",
-      "label": "BAWAG Group AG",
-      "legal_name": "BAWAG Group AG",
-      "short_name": "BAWAG Group",
+      "label": "BAWAG Group",
+      "legal_name": "BAWAG Group",
+      "short_name": "BAWAG",
       "span_file": "span_Bawag.json",
       "match_dataset_id": "bawag",
       "source_substrings": ["Bawag", "BAWAG", "bawag"]

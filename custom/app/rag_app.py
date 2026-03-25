@@ -69,7 +69,7 @@ def get_device() -> str:
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY") 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-LLM_MODEL = "google/gemini-3-flash-preview"
+LLM_MODEL = "openai/gpt-5.1"
 
 
 # Robust JSON parsing for Gemini/OpenRouter responses
@@ -317,7 +317,11 @@ class RAG:
         # Patch LLMClient for robust JSON parsing (handles Gemini's markdown-wrapped responses)
         self._patch_llm_client_for_robust_json()
 
-        self.extractor = LLMSpanExtractor(llm_client=self.llm_client)
+        # Individual mode is more stable for long due-diligence prompts and noisy PDF text.
+        self.extractor = LLMSpanExtractor(
+            llm_client=self.llm_client,
+            extraction_mode="auto",
+        )
         self.response_builder = ResponseBuilder()
         self.template_manager = TemplateManager(llm_client=self.llm_client)
         self.template_manager.use_contextual_mode(use_per_fact=True) # to activate contextual mode
@@ -330,18 +334,48 @@ class RAG:
         original_complete = self.llm_client.complete
         original_complete_async = self.llm_client.complete_async
         llm_client = self.llm_client
+
+        def normalize_doc_keys(parsed: dict, documents: dict) -> dict:
+            """
+            Normalize model output to expected doc keys (doc_0..doc_n).
+            """
+            if not isinstance(parsed, dict):
+                return {doc_id: [] for doc_id in documents.keys()}
+
+            expected = list(documents.keys())
+            out = {doc_id: [] for doc_id in expected}
+
+            # Exact key pass-through
+            for k, v in parsed.items():
+                if k in out and isinstance(v, list):
+                    out[k] = v
+
+            # If exact keys missing, try mapping by index hints (doc0, document_0, 0, etc.)
+            if any(out[k] for k in out) or not parsed:
+                return out
+
+            for raw_key, val in parsed.items():
+                if not isinstance(val, list):
+                    continue
+                m = re.search(r"(\d+)", str(raw_key))
+                if not m:
+                    continue
+                idx = int(m.group(1))
+                if 0 <= idx < len(expected):
+                    out[expected[idx]] = val
+            return out
         
         def robust_extract_spans(question: str, documents: dict) -> dict:
             """Extract spans with robust JSON parsing."""
             prompt = llm_client._build_extraction_prompt(question, documents)
             try:
-                response = original_complete(prompt, json_mode=True)
-                return safe_parse_json(response)
+                response = original_complete(prompt, json_mode=True, temperature=0)
+                return normalize_doc_keys(safe_parse_json(response), documents)
             except (json.JSONDecodeError, ValueError) as e:
                 # If json_mode fails, try without it
                 try:
-                    response = original_complete(prompt, json_mode=False)
-                    return safe_parse_json(response)
+                    response = original_complete(prompt, json_mode=False, temperature=0)
+                    return normalize_doc_keys(safe_parse_json(response), documents)
                 except (json.JSONDecodeError, ValueError) as e2:
                     print(f"Span extraction failed: {e2}")
                     if response:
@@ -352,12 +386,12 @@ class RAG:
             """Async extract spans with robust JSON parsing."""
             prompt = llm_client._build_extraction_prompt(question, documents)
             try:
-                response = await original_complete_async(prompt, json_mode=True)
-                return safe_parse_json(response)
+                response = await original_complete_async(prompt, json_mode=True, temperature=0)
+                return normalize_doc_keys(safe_parse_json(response), documents)
             except (json.JSONDecodeError, ValueError) as e:
                 try:
-                    response = await original_complete_async(prompt, json_mode=False)
-                    return safe_parse_json(response)
+                    response = await original_complete_async(prompt, json_mode=False, temperature=0)
+                    return normalize_doc_keys(safe_parse_json(response), documents)
                 except (json.JSONDecodeError, ValueError) as e2:
                     print(f"Async span extraction failed: {e2}")
                     if response:
@@ -503,7 +537,7 @@ class RAG:
                 meta = self._get_meta(c)
                 wrapped_chunks.append(
                     SimpleNamespace(
-                        text=self._normalize_text(text),
+                        text=self._clean_text_for_extraction(text),
                         metadata=meta,
                         source_file=meta.get("source_file"),
                         page=meta.get("page"),
@@ -619,6 +653,23 @@ class RAG:
     @staticmethod
     def _normalize_text(t: str) -> str:
         return (t or "").replace("\ufffd", "").replace("\r", "\n")
+
+    @staticmethod
+    def _clean_text_for_extraction(t: str) -> str:
+        """
+        Remove common PDF whitespace noise before extraction.
+        """
+        s = RAG._normalize_text(t)
+        s = (
+            s.replace("\t", " ")
+            .replace("\xa0", " ")
+            .replace("\u2007", " ")
+            .replace("\u202f", " ")
+        )
+        s = re.sub(r"[ \f\v]+", " ", s)
+        s = re.sub(r" *\n *", "\n", s)
+        s = re.sub(r"\n{3,}", "\n\n", s)
+        return s.strip()
     
     def _build_document(
         self, 

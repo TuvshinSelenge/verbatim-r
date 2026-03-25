@@ -39,3 +39,38 @@ Run from repository root:
 - `python -m custom.benchmarks.collection.reranker_comparison`
 - `python -m custom.benchmarks.collection.semantic_highlighter`
 
+## Per-bank run commands
+
+Run from repository root (`PYTHONPATH=.` ensures package imports work):
+
+### Interactive query demo (bank-scoped)
+
+- RBI: `PYTHONPATH=. python -m custom.setup.interactive_query_demo --bank rbi`
+- BAWAG: `PYTHONPATH=. python -m custom.setup.interactive_query_demo --bank bawag`
+- Erste: `PYTHONPATH=. python -m custom.setup.interactive_query_demo --bank erste`
+- UniCredit: `PYTHONPATH=. python -m custom.setup.interactive_query_demo --bank uni`
+
+Optional: run the configured span suite for that bank:
+
+- `PYTHONPATH=. python -m custom.setup.interactive_query_demo --bank <bank_id> --run-spans`
+
+### Model benchmark (bank-scoped)
+
+`model_benchmark.py` supports per-bank files and Milvus scope filter:
+
+- RBI: `PYTHONPATH=. python -m custom.benchmarks.collection.model_benchmark --bank rbi`
+- BAWAG: `PYTHONPATH=. python -m custom.benchmarks.collection.model_benchmark --bank bawag`
+- Erste: `PYTHONPATH=. python -m custom.benchmarks.collection.model_benchmark --bank erste`
+- UniCredit: `PYTHONPATH=. python -m custom.benchmarks.collection.model_benchmark --bank uni`
+
+If needed, override data files explicitly:
+
+- `PYTHONPATH=. python -m custom.benchmarks.collection.model_benchmark --bank erste --chunk-data custom/data/chunk_ids_Erste.json --span-data custom/data/span_Erste.json`
+
+Results are saved as bank-specific files, e.g.:
+
+- `custom/results/benchmark_results_rbi.txt`
+- `custom/results/benchmark_results_bawag.txt`
+- `custom/results/benchmark_results_erste.txt`
+- `custom/results/benchmark_results_uni.txt`
+

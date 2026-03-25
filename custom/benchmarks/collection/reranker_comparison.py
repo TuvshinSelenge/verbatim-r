@@ -36,7 +36,7 @@ MODEL_NAME = "google/gemini-3-flash-preview"
 TOP_K = 5
 SEARCH_K = 50
 PER_SUBQ_K = 20
-SKIP_SENTINEL_1300 = True
+SKIP_SENTINEL_3000 = True
 QUERY_TIMEOUT = 120
 RERANKERS_TO_TEST = [
     "cross-encoder/ms-marco-MiniLM-L-6-v2",
@@ -119,9 +119,9 @@ def evaluate_reranker(
         expected_idxs = item["expected_chunk_index"]
         if not isinstance(expected_idxs, list):
             expected_idxs = [expected_idxs]
-        if SKIP_SENTINEL_1300 and all(idx == 1300 for idx in expected_idxs):
+        if SKIP_SENTINEL_3000 and all(idx == 3000 for idx in expected_idxs):
             skipped += 1
-            print("  skipped (sentinel 1300)")
+            print("  skipped (sentinel 3000)")
             continue
         gold_idxs = set(expected_idxs)
         try:

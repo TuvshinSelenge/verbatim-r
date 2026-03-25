@@ -101,7 +101,7 @@ def run_span_suite(
     scope: Optional[ReportScope],
     k: int,
     device: str,
-    skip_sentinel_1300: bool,
+    skip_sentinel_3000: bool,
     check_chunk_hits: bool,
 ) -> None:
     items = json.loads(span_path.read_text(encoding="utf-8"))
@@ -123,8 +123,8 @@ def run_span_suite(
             continue
         q = item["query"]
         expected = _normalize_expected_chunk_idxs(item.get("expected_chunk_index"))
-        if skip_sentinel_1300 and expected and all(x == 1300 for x in expected):
-            print(f"[{i}] (skip sentinel 1300) {q[:70]}…")
+        if skip_sentinel_3000 and expected and all(x == 3000 for x in expected):
+            print(f"[{i}] (skip sentinel 3000) {q[:70]}…")
             continue
 
         results = rag_index.query(text=q, k=k, filter=filt)
@@ -275,7 +275,7 @@ def main() -> int:
     parser.add_argument(
         "--no-skip-sentinel",
         action="store_true",
-        help="Include items whose only expected_chunk_index is 1300",
+        help="Include items whose only expected_chunk_index is 3000",
     )
     args = parser.parse_args()
     db_path = os.path.abspath(os.path.expanduser(str(args.db_path)))
@@ -338,7 +338,7 @@ def main() -> int:
             scope,
             k=args.k,
             device=args.device,
-            skip_sentinel_1300=not args.no_skip_sentinel,
+            skip_sentinel_3000=not args.no_skip_sentinel,
             check_chunk_hits=not args.no_chunk_check,
         )
         return 0
