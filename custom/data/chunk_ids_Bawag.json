@@ -1,7 +1,7 @@
 [
   {
     "query": "Please advise the name of the contracting party providing custody and / or client money services in your jurisdiction and responding to this questionnaire. If applicable, please also advise the name of the local delegate if different from the contracting entity.",
-    "expected_chunk_index": []
+    "expected_chunk_index": [142, 58]
   },
   {
     "query": "Please advise the full legal address and the country of incorporation of the contracting party providing custody and / or client money services in your jurisdiction and responding to this questionnaire. If applicable, please also provide this information for the local delegate if different from the contracting entity.",

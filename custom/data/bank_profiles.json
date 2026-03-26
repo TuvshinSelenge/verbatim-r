@@ -12,7 +12,7 @@
     {
       "id": "bawag",
       "label": "BAWAG Group",
-      "legal_name": "BAWAG Group",
+      "legal_name": "BAWAG P.S.K. AG",
       "short_name": "BAWAG",
       "span_file": "span_Bawag.json",
       "match_dataset_id": "bawag",
