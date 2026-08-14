@@ -4,10 +4,52 @@
 
 - `pipeline/` - shared retrieval, metrics, runtime, and IO helpers
 - `setup/` - reusable setup components for index/reranker/query modules
+- `indexing/` - Docling-based PDF parsing and Milvus index creation
 - `benchmarks/collection/` - benchmark implementations
 - `tests/` - unit tests
 - `data/` - benchmark input datasets (`bank_profiles.json` maps banks → span files + PDF path hints)
 - `results/` - benchmark outputs
+
+## Index creation
+
+`indexing/create_index.py` contains the thesis-specific integration of Docling's
+`DocumentConverter` and `HybridChunker` with Verbatim RAG and local Milvus. It
+enables table-structure recognition, serializes tables as Markdown, merges peer
+chunks, and stores source/page/chunk metadata alongside dense MiniLM and sparse
+SPLADE vectors.
+
+Build a new index from all PDFs in a folder:
+
+```bash
+PYTHONPATH=. python -m custom.indexing.create_index \
+  --pdf-folder /path/to/annual-reports \
+  --db-path custom/milvus_verbatim_new.db
+```
+
+The full build asks before replacing an existing database. Use `--force` or
+`--yes` only when replacement is intentional.
+
+Add newly discovered PDFs while retaining existing records:
+
+```bash
+PYTHONPATH=. python -m custom.indexing.create_index \
+  --pdf-folder /path/to/annual-reports \
+  --db-path custom/milvus_verbatim_new.db \
+  --incremental --yes
+```
+
+Replace selected reports in an existing index:
+
+```bash
+PYTHONPATH=. python -m custom.indexing.create_index \
+  --pdf-folder /path/to/annual-reports \
+  --db-path custom/milvus_verbatim_new.db \
+  --incremental --reindex "Report A.pdf" "Report B.pdf" --yes
+```
+
+Defaults can be configured with `PDF_SOURCE_FOLDER` and `CUSTOM_DB_PATH`
+(`DB_PATH` is also accepted). Use the same embedding model and chunk settings
+for incremental updates as for the original index.
 
 ## Multi-bank testing
 
